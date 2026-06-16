@@ -334,14 +334,37 @@ function renderGame(state) {
     statusEl.textContent = state.players.length<2 ? 'Czekaj na innych graczy...' : '';
   } else if (state.phase==='showdown' && state.winners) {
     winnerEl.style.display='';
+    // Only show cards for players who must show (aggressor/winner)
     const winnerHtml = state.winners.map(w => {
-      const cardStr = w.cards && w.cards.length ? ' ['+w.cards.map(c=>c.rank+c.suit).join(' ')+']' : '';
-      const prefix = w.isWinner ? '🏆 ' : '  ';
-      const bold = w.isWinner ? '<strong>' : '<span style="opacity:0.6">';
+      const cardStr = (w.showCards && w.cards && w.cards.length) ? ' ['+w.cards.map(c=>c.rank+c.suit).join(' ')+']' : '';
+      const prefix = w.isWinner ? '🏆 ' : '';
+      const bold = w.isWinner ? '<strong>' : '<span style="opacity:0.65">';
       const boldEnd = w.isWinner ? '</strong>' : '</span>';
-      return prefix+bold+w.name+boldEnd+': '+w.hand+cardStr;
+      const handLabel = w.showCards ? ': '+w.hand : ': (karty ukryte)';
+      return prefix+bold+w.name+boldEnd+handLabel+cardStr;
     }).join('<br>');
     winnerEl.innerHTML = winnerHtml;
+    // Results table
+    const rb = document.getElementById('results-banner');
+    if (rb && state.chipsBeforeHand) {
+      rb.style.display='';
+      const rows = state.players.map(p => {
+        const before = state.chipsBeforeHand[p.id] !== undefined ? state.chipsBeforeHand[p.id] : p.chips;
+        const delta = p.chips - before;
+        const deltaStr = delta > 0
+          ? '<span class="delta-pos">+'+delta.toLocaleString('pl-PL')+' zł</span>'
+          : delta < 0
+            ? '<span class="delta-neg">'+delta.toLocaleString('pl-PL')+' zł</span>'
+            : '<span style="color:var(--text-dim)">—</span>';
+        const rowCls = delta > 0 ? 'win-row' : delta < 0 ? 'lose-row' : '';
+        return '<tr class="'+rowCls+'"><td>'+p.name+'</td><td>'+p.chips.toLocaleString('pl-PL')+' zł</td><td>'+deltaStr+'</td></tr>';
+      }).join('');
+      rb.innerHTML = '<div class="results-title">📊 Wyniki rozdania #'+state.handNum+'</div>'
+        +'<table class="results-table"><thead><tr><th>Gracz</th><th>Stack</th><th>Zmiana</th></tr></thead><tbody>'
+        +rows+'</tbody></table>';
+    } else if (rb) {
+      rb.style.display='none';
+    }
   } else if (state.currentPlayerId===myId) {
     statusEl.textContent='⬆ Twoja kolej!';
   } else {
