@@ -7,7 +7,14 @@ const { PokerGame } = require('./gameLogic');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, {
+  cors: { origin: '*' },
+  pingTimeout: 60000,      // 60s before considering disconnected
+  pingInterval: 25000,     // ping every 25s
+  upgradeTimeout: 30000,
+  allowUpgrades: true,
+  transports: ['websocket', 'polling']
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
@@ -27,6 +34,14 @@ io.on('connection', (socket) => {
     if (!roomId || !name) return;
     const room = getOrCreateRoom(roomId);
 
+    // Clear pending disconnect timer for returning player
+    for (const p of room.game.players) {
+      if (p.name === name && p._disconnectTimer) {
+        clearTimeout(p._disconnectTimer);
+        p._disconnectTimer = null;
+      }
+    }
+
     // Remove any stale player with same name (reconnect case)
     const existing = room.game.players.find(p => p.name === name && p.id !== socket.id);
     if (existing) {
@@ -42,6 +57,10 @@ io.on('connection', (socket) => {
       socket.emit('error_msg', 'Pokój jest pełny (max 8 graczy)');
       return;
     }
+
+    // Restore connection status for returning player
+    const returningPlayer = room.game.players.find(p => p.id === socket.id);
+    if (returningPlayer) returningPlayer.connected = true;
 
     if (!room.hostId || !room.game.players.find(p => p.id === room.hostId)) {
       room.hostId = socket.id;
@@ -183,20 +202,32 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${chips.toLocaleString('pl-PL')} zł`);
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room) return;
     const player = room.game.players.find(p => p.id === socket.id);
-    if (player) {
-      broadcastChat(currentRoom, null, `👋 ${player.name} opuścił stół`);
-      room.game.removePlayer(socket.id);
-      if (room.hostId === socket.id && room.game.players.length > 0) {
-        room.hostId = room.game.players[0].id;
-        broadcastChat(currentRoom, null, `👑 ${room.game.players[0].name} jest teraz hostem`);
+    if (!player) return;
+
+    // Give 30s grace period for reconnect (tab switch, phone sleep etc)
+    player._disconnectTimer = setTimeout(() => {
+      // Check if player reconnected with new socket
+      const stillGone = !room.game.players.find(p => p.name === player.name && p.id !== socket.id);
+      if (stillGone && room.game.players.find(p => p.id === socket.id)) {
+        broadcastChat(currentRoom, null, `👋 ${player.name} opuścił stół`);
+        room.game.removePlayer(socket.id);
+        if (room.hostId === socket.id && room.game.players.length > 0) {
+          room.hostId = room.game.players[0].id;
+          broadcastChat(currentRoom, null, `👑 ${room.game.players[0].name} jest teraz hostem`);
+        }
+        emitPersonalizedStates(currentRoom, room);
       }
-      emitPersonalizedStates(currentRoom, room);
-    }
+    }, 30000);
+
+    // Mark as temporarily away but don't fold yet
+    player.connected = 'away';
+    emitPersonalizedStates(currentRoom, room);
+    broadcastChat(currentRoom, null, `📵 ${player.name} chwilowo niedostępny...`);
   });
 
   function broadcastChat(roomId, senderName, text) {

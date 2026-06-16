@@ -261,7 +261,13 @@ function joinRoom() {
   const room = document.getElementById('input-room').value.trim().toUpperCase();
   if (!name || !room) { showToast('Wpisz imię i kod pokoju'); return; }
   myName = name; myRoom = room;
-  socket = io();
+  socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
 
   socket.on('connect', () => {
     myId = socket.id;
@@ -274,6 +280,33 @@ function joinRoom() {
   socket.on('reconnect', () => {
     myId = socket.id;
     socket.emit('join_room', { roomId: myRoom, name: myName });
+  });
+
+  socket.on('disconnect', () => {
+    // Will auto-reconnect via socket.io
+  });
+
+  // Rejoin when tab becomes visible again
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && socket) {
+      if (!socket.connected) {
+        socket.connect();
+      } else {
+        // Already connected - just re-sync state
+        socket.emit('join_room', { roomId: myRoom, name: myName });
+      }
+    }
+  });
+
+  // Rejoin on page focus (mobile browser returning from background)
+  window.addEventListener('focus', () => {
+    if (socket && myRoom) {
+      if (!socket.connected) {
+        socket.connect();
+      } else {
+        socket.emit('join_room', { roomId: myRoom, name: myName });
+      }
+    }
   });
 
   socket.on('game_state', (state) => {
