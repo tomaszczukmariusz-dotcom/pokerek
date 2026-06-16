@@ -186,6 +186,9 @@ class PokerGame {
     this.winners = null;
     this.lastAction = null;
     this.actedThisStreet = new Set();
+    // Save chips before hand for delta calculation
+    this.chipsBeforeHand = {};
+    for (const p of this.players) this.chipsBeforeHand[p.id] = p.chips;
 
     for (const p of this.players) {
       p.cards = [];
@@ -432,6 +435,7 @@ class PokerGame {
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
       startingChips: this.startingChips,
+      chipsBeforeHand: this.chipsBeforeHand || {},
     };
   }
 }
