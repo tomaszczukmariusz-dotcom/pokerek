@@ -11,35 +11,30 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rooms: roomId -> { game, chat, readyPlayers }
 const rooms = {};
 
 function getOrCreateRoom(roomId) {
   if (!rooms[roomId]) {
-    rooms[roomId] = { game: new PokerGame(roomId), chat: [], readyPlayers: new Set() };
+    rooms[roomId] = { game: new PokerGame(roomId), chat: [] };
   }
   return rooms[roomId];
 }
 
 io.on('connection', (socket) => {
   let currentRoom = null;
-  let currentPlayerId = socket.id;
 
   socket.on('join_room', ({ roomId, name }) => {
     if (!roomId || !name) return;
     const room = getOrCreateRoom(roomId);
     const added = room.game.addPlayer(socket.id, name);
     if (!added && !room.game.players.find(p => p.id === socket.id)) {
-      socket.emit('error_msg', 'Pokój jest pełny lub już dołączyłeś');
+      socket.emit('error_msg', 'Pokój jest pełny');
       return;
     }
     currentRoom = roomId;
     socket.join(roomId);
-
-    const state = room.game.getState(socket.id);
-    io.to(roomId).emit('game_state', state);
+    emitPersonalizedStates(roomId, room);
     socket.emit('chat_history', room.chat);
-
     const player = room.game.players.find(p => p.id === socket.id);
     broadcastChat(roomId, null, `🃏 ${player?.name || name} dołączył do stołu`);
   });
@@ -48,11 +43,12 @@ io.on('connection', (socket) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room) return;
-    if (!room.game.canStart()) {
+    if (room.game.activePlayers().length < 2) {
       socket.emit('error_msg', 'Potrzeba minimum 2 graczy');
       return;
     }
-    const state = room.game.startHand();
+    if (room.game.phase !== 'waiting') return;
+    room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
   });
@@ -70,17 +66,13 @@ io.on('connection', (socket) => {
       if (winners) {
         const msg = winners.map(w => `🏆 ${w.name}: ${w.hand}`).join(' | ');
         broadcastChat(currentRoom, null, msg);
-        // Auto next hand after 5s
+        // Wait 4s then switch to waiting so players can see the result
         setTimeout(() => {
-          if (rooms[currentRoom] && room.game.canStart()) {
+          if (rooms[currentRoom]) {
             room.game.phase = 'waiting';
-            if (room.game.activePlayers().length >= 2) {
-              room.game.startHand();
-              emitPersonalizedStates(currentRoom, room);
-              broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
-            }
+            emitPersonalizedStates(currentRoom, room);
           }
-        }, 6000);
+        }, 4000);
       }
     }
   });
@@ -93,13 +85,18 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, player.name, text.trim().slice(0, 200));
   });
 
-
   socket.on('new_hand', () => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room) return;
-    if (room.game.phase !== 'waiting') return;
-    if (room.game.activePlayers().length < 2) { socket.emit('error_msg', 'Potrzeba minimum 2 graczy'); return; }
+    if (room.game.phase !== 'waiting') {
+      socket.emit('error_msg', 'Poczekaj na zakończenie rozdania');
+      return;
+    }
+    if (room.game.activePlayers().length < 2) {
+      socket.emit('error_msg', 'Potrzeba minimum 2 graczy z żetonami');
+      return;
+    }
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
@@ -128,15 +125,11 @@ io.on('connection', (socket) => {
 
   function emitPersonalizedStates(roomId, room) {
     for (const player of room.game.players) {
-      const playerSocket = io.sockets.sockets.get(player.id);
-      if (playerSocket) {
-        playerSocket.emit('game_state', room.game.getState(player.id));
-      }
+      const s = io.sockets.sockets.get(player.id);
+      if (s) s.emit('game_state', room.game.getState(player.id));
     }
-    // Also emit generic state to spectators (no hole cards)
-    io.to(roomId).emit('game_state_public', room.game.getState(null));
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`♠ Poker server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`♠ Poker server on port ${PORT}`));
