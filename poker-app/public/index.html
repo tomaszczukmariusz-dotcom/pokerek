@@ -22,8 +22,7 @@
   --panel-border: rgba(255,255,255,0.1);
   --radius: 10px;
 }
-html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
-
+html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; display: flex; justify-content: center; }
 /* ---- LOGIN ---- */
 #login-screen {
   height: 100vh;
@@ -75,12 +74,13 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 /* ---- GAME SCREEN ---- */
 #game-screen {
   height: 100vh;
+  width: 100%;
+  max-width: 480px;
   display: none;
   flex-direction: column;
   background: radial-gradient(ellipse at 50% 40%, var(--felt) 0%, var(--felt-dark) 100%);
   overflow: hidden;
 }
-
 /* TOP BAR */
 .topbar {
   display: flex;
