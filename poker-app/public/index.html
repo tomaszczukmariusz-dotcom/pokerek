@@ -22,7 +22,7 @@
   --panel-border: rgba(255,255,255,0.1);
   --radius: 10px;
 }
-html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; display: flex; justify-content: center; }
+html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
 /* ---- LOGIN ---- */
 #login-screen {
   height: 100vh;
@@ -74,8 +74,6 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 /* ---- GAME SCREEN ---- */
 #game-screen {
   height: 100vh;
-  width: 100%;
-  max-width: 480px;
   display: none;
   flex-direction: column;
   background: radial-gradient(ellipse at 50% 40%, var(--felt) 0%, var(--felt-dark) 100%);
@@ -107,6 +105,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   justify-content: space-between;
   padding: 8px 10px;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* OPPONENTS */
@@ -162,6 +161,8 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   gap: 8px;
   flex: 1;
   justify-content: center;
+  min-height: 0;
+  overflow: visible;
 }
 .phase-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .community-cards {
