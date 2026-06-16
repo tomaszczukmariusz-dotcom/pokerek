@@ -190,6 +190,7 @@ class PokerGame {
     for (const p of this.players) {
       p.cards = [];
       p.bet = 0;
+      p.totalBet = 0;
       p.folded = p.chips <= 0 || !p.connected;
       p.allIn = false;
     }
@@ -235,7 +236,7 @@ class PokerGame {
   postBlind(playerIdx, amount) {
     const p = this.players[playerIdx];
     const actual = Math.min(p.chips, amount);
-    p.chips -= actual; p.bet += actual; this.pot += actual;
+    p.chips -= actual; p.bet += actual; p.totalBet = (p.totalBet||0) + actual; this.pot += actual;
     if (p.chips === 0) p.allIn = true;
   }
 
@@ -251,7 +252,7 @@ class PokerGame {
       if (this.currentBet > p.bet) return { error: 'Nie możesz check' };
     } else if (action === 'call') {
       const toCall = Math.min(this.currentBet - p.bet, p.chips);
-      p.chips -= toCall; p.bet += toCall; this.pot += toCall;
+      p.chips -= toCall; p.bet += toCall; p.totalBet = (p.totalBet||0) + toCall; this.pot += toCall;
       if (p.chips === 0) p.allIn = true;
     } else if (action === 'raise') {
       const raiseTotal = Math.min(amount, p.chips + p.bet);
@@ -260,7 +261,7 @@ class PokerGame {
       const toAdd = raiseTotal - p.bet;
       this.minRaise = raiseTotal - this.currentBet;
       this.currentBet = raiseTotal;
-      p.chips -= toAdd; p.bet += toAdd; this.pot += toAdd;
+      p.chips -= toAdd; p.bet += toAdd; p.totalBet = (p.totalBet||0) + toAdd; this.pot += toAdd;
       if (p.chips === 0) p.allIn = true;
       this.actedThisStreet = new Set([playerId]);
     } else if (action === 'allIn') {
@@ -270,7 +271,7 @@ class PokerGame {
         this.currentBet = p.bet + toAdd;
         this.actedThisStreet = new Set([playerId]);
       }
-      p.bet += toAdd; this.pot += toAdd; p.chips = 0; p.allIn = true;
+      p.bet += toAdd; p.totalBet = (p.totalBet||0) + toAdd; this.pot += toAdd; p.chips = 0; p.allIn = true;
     }
 
     this.actedThisStreet.add(playerId);
@@ -318,19 +319,58 @@ class PokerGame {
   showdown() {
     this.phase = 'showdown';
     const inHand = this.inHandPlayers();
+
+    // Score all hands
     const scored = inHand.map(p => ({
       player: p,
       score: evaluateHand(p.cards, this.community)
     }));
     scored.sort((a,b) => compareScore(b.score, a.score));
-    const winner = scored[0].player;
-    winner.chips += this.pot;
+
+    // Build side pots
+    // Each player can only win up to their totalBet from each other player
+    const allPlayers = this.players.filter(p => (p.totalBet||0) > 0);
+    const winnerIds = new Set();
+
+    // Process pots from smallest all-in upward
+    const sortedByBet = [...allPlayers].sort((a,b) => (a.totalBet||0) - (b.totalBet||0));
+    let remaining = {}; // playerId -> totalBet remaining to distribute
+    for (const p of allPlayers) remaining[p.id] = p.totalBet || 0;
+
+    let processedLevel = 0;
+    const sidePots = [];
+
+    for (const capPlayer of sortedByBet) {
+      const cap = (capPlayer.totalBet || 0) - processedLevel;
+      if (cap <= 0) continue;
+      let potSize = 0;
+      for (const p of allPlayers) {
+        const contrib = Math.min(remaining[p.id] || 0, cap);
+        potSize += contrib;
+        remaining[p.id] = (remaining[p.id] || 0) - contrib;
+      }
+      if (potSize > 0) {
+        // Eligible winners for this pot: must be in hand and have totalBet >= this level
+        const eligible = scored.filter(s => !s.player.folded && (s.player.totalBet||0) >= capPlayer.totalBet);
+        sidePots.push({ amount: potSize, eligible });
+      }
+      processedLevel += cap;
+    }
+
+    // Award each side pot to best eligible hand
+    for (const pot of sidePots) {
+      if (pot.eligible.length === 0) continue;
+      const potWinner = pot.eligible[0]; // already sorted by score desc
+      potWinner.player.chips += pot.amount;
+      winnerIds.add(potWinner.player.id);
+    }
+
     this.winners = scored.map(s => ({
       id: s.player.id,
       name: s.player.name,
       hand: s.score ? s.score.description : 'Wysoka karta',
       cards: s.player.cards,
-      isWinner: s.player.id === winner.id
+      isWinner: winnerIds.has(s.player.id)
     }));
     this.pot = 0;
     return this.getState();
