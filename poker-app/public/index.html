@@ -22,10 +22,13 @@
   --panel-border: rgba(255,255,255,0.1);
   --radius: 10px;
 }
-html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; display: flex; justify-content: center; }
+
 /* ---- LOGIN ---- */
 #login-screen {
   height: 100vh;
+  width: 100%;
+  max-width: 480px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -74,11 +77,14 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 /* ---- GAME SCREEN ---- */
 #game-screen {
   height: 100vh;
+  width: 100%;
+  max-width: 480px;
   display: none;
   flex-direction: column;
   background: radial-gradient(ellipse at 50% 40%, var(--felt) 0%, var(--felt-dark) 100%);
   overflow: hidden;
 }
+
 /* TOP BAR */
 .topbar {
   display: flex;
@@ -105,7 +111,6 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   justify-content: space-between;
   padding: 8px 10px;
   min-height: 0;
-  overflow: hidden;
 }
 
 /* OPPONENTS */
@@ -161,8 +166,6 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   gap: 8px;
   flex: 1;
   justify-content: center;
-  min-height: 0;
-  overflow: visible;
 }
 .phase-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .community-cards {
@@ -352,6 +355,19 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .player-status { font-size: 11px; color: var(--text-dim); }
 .you-badge { font-size: 10px; background: rgba(249,199,79,0.2); color: var(--gold); padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
 
+
+/* SETTINGS PANEL */
+.settings-panel { padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.settings-section { background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.settings-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 2px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.settings-row label { font-size: 13px; }
+.settings-input { width: 90px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.07); color: var(--text); font-size: 13px; text-align: right; }
+.settings-input:focus { outline: none; border-color: var(--gold); }
+.btn-settings-save { background: var(--gold); color: #111; font-weight: 700; padding: 10px; border-radius: 10px; border: none; font-size: 13px; cursor: pointer; width: 100%; }
+.btn-kick { background: rgba(230,57,70,0.2); color: #ff9a9e; border: 1px solid rgba(230,57,70,0.4); border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.host-badge { font-size: 9px; background: rgba(249,199,79,0.2); color: var(--gold); padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+.host-only-notice { font-size: 11px; color: var(--text-dim); text-align: center; padding: 20px; }
 /* Error toast */
 .toast {
   position: fixed;
@@ -454,6 +470,9 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   <!-- PLAYERS PANEL -->
   <div id="panel-players" class="panel players-panel" style="flex:1; min-height:0;"></div>
 
+  <!-- SETTINGS PANEL -->
+  <div id="panel-settings" class="panel settings-panel" style="flex:1; min-height:0;"></div>
+
   <!-- TABS -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('game', this)">
@@ -468,6 +487,10 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
     <button class="tab-btn" onclick="switchTab('players', this)">
       <span class="tab-icon">👥</span>
       Gracze
+    </button>
+    <button class="tab-btn" onclick="switchTab('settings', this)" id="tab-settings" style="display:none">
+      <span class="tab-icon">⚙️</span>
+      Host
     </button>
   </div>
 </div>
@@ -484,6 +507,7 @@ function cardColor(suit) { return suit === '♥' || suit === '♦' ? 'red' : '';
 let socket, myId, myName, myRoom;
 let gameState = null;
 let chatOpen = false;
+let amHost = false;
 
 function joinRoom() {
   const name = document.getElementById('input-name').value.trim();
@@ -505,7 +529,11 @@ function joinRoom() {
 
   socket.on('game_state', (state) => {
     gameState = state;
+    amHost = !!state.isHost;
+    const tabSettings = document.getElementById('tab-settings');
+    if (tabSettings) tabSettings.style.display = amHost ? '' : 'none';
     renderGame(state);
+    renderSettings(state);
   });
 
   socket.on('chat_history', (msgs) => {
@@ -520,6 +548,12 @@ function joinRoom() {
   });
 
   socket.on('error_msg', (msg) => showToast(msg));
+  socket.on('kicked', ({ reason }) => {
+    document.getElementById('game-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    showToast(reason || 'Zostałeś wyrzucony');
+    socket.disconnect();
+  });
 }
 
 function renderGame(state) {
@@ -757,16 +791,56 @@ function renderPlayersList(state) {
     const div = document.createElement('div');
     div.className = 'player-row';
     const status = p.folded ? 'Fold' : p.allIn ? 'All In' : p.connected === false ? 'Rozłączony' : 'W grze';
+    const kickBtn = (amHost && p.id !== myId) ? `<button class="btn-kick" onclick="kickPlayer('${p.id}')">Wyrzuć</button>` : '';
+    const hostMark = (state.isHost && p.id === myId) ? '<span class="host-badge">HOST</span>' : '';
     div.innerHTML = `
       <div class="player-avatar" style="background:${avatarColor(p.name)}33; color:${avatarColor(p.name)}">${initials(p.name)}</div>
-      <div class="player-details">
-        <div class="player-name">${p.name}${p.id === myId ? '<span class="you-badge">Ty</span>' : ''}</div>
+      <div class="player-details" style="flex:1">
+        <div class="player-name">${p.name}${p.id === myId ? '<span class="you-badge">Ty</span>' : ''}${hostMark}</div>
         <div class="player-chips-label">${fmtChips(p.chips)}</div>
         <div class="player-status">${status}${p.isDealer ? ' · Dealer' : ''}</div>
       </div>
+      ${kickBtn}
     `;
     panel.appendChild(div);
   });
+}
+
+function kickPlayer(playerId) {
+  if (!confirm('Na pewno wyrzucić tego gracza?')) return;
+  socket.emit('kick_player', { playerId });
+}
+
+function renderSettings(state) {
+  const panel = document.getElementById('panel-settings');
+  if (!panel) return;
+  panel.innerHTML = '';
+  if (!amHost) {
+    panel.innerHTML = '<div class="host-only-notice">Tylko host może zmieniać ustawienia</div>';
+    return;
+  }
+  const inGame = state.phase !== 'waiting';
+  const dis = inGame ? 'disabled' : '';
+  panel.innerHTML = `
+    <div class="settings-section">
+      <div class="settings-title">⚙️ Ustawienia stołu</div>
+      ${inGame ? '<div style="font-size:11px;color:var(--text-dim);">Zakończ rozdanie żeby zmienić ustawienia</div>' : ''}
+      <div class="settings-row"><label>Small Blind</label><input class="settings-input" id="set-sb" type="number" value="${state.smallBlind}" min="1" ${dis}></div>
+      <div class="settings-row"><label>Big Blind</label><input class="settings-input" id="set-bb" type="number" value="${state.bigBlind}" min="2" ${dis}></div>
+      <div class="settings-row"><label>Żetony startowe</label><input class="settings-input" id="set-chips" type="number" value="2000" min="100" ${dis}></div>
+      ${!inGame ? '<button class="btn-settings-save" onclick="saveSettings()">💾 Zapisz ustawienia</button>' : ''}
+    </div>
+  `;
+}
+
+function saveSettings() {
+  const sb = parseInt(document.getElementById('set-sb').value);
+  const bb = parseInt(document.getElementById('set-bb').value);
+  const chips = parseInt(document.getElementById('set-chips').value);
+  if (!sb || !bb || sb < 1 || bb < 2) { showToast('Nieprawidłowe blindy'); return; }
+  if (bb <= sb) { showToast('Big blind musi być większy niż small blind'); return; }
+  socket.emit('update_settings', { smallBlind: sb, bigBlind: bb, startingChips: chips });
+  showToast('Ustawienia zapisane!');
 }
 
 function addChatMsg(msg) {
