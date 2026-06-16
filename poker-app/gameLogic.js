@@ -21,18 +21,15 @@ function shuffle(deck) {
   return d;
 }
 
-// Hand evaluation - returns { rank, name, tiebreakers }
 function evaluateHand(holeCards, communityCards) {
   const all = [...holeCards, ...communityCards];
-  const best = bestFiveOf(all);
-  return best;
+  return bestFiveOf(all);
 }
 
 function bestFiveOf(cards) {
   if (cards.length < 5) return null;
   let best = null;
-  const combos = choose5(cards);
-  for (const combo of combos) {
+  for (const combo of choose5(cards)) {
     const score = scoreHand(combo);
     if (!best || compareScore(score, best) > 0) best = score;
   }
@@ -76,9 +73,7 @@ function scoreHand(five) {
 }
 
 function isStraight(sortedVals) {
-  // normal straight
   if (sortedVals[0]-sortedVals[4]===4 && new Set(sortedVals).size===5) return true;
-  // wheel A-2-3-4-5
   const s = new Set(sortedVals);
   if (s.has(14)&&s.has(2)&&s.has(3)&&s.has(4)&&s.has(5)) return true;
   return false;
@@ -96,18 +91,13 @@ function compareScore(a, b) {
   return 0;
 }
 
-// ---- Game State Machine ----
-
-const PHASES = ['preflop','flop','turn','river','showdown'];
-
 class PokerGame {
   constructor(roomId) {
     this.roomId = roomId;
-    this.players = []; // { id, name, chips, cards, bet, folded, allIn, sitOut }
+    this.players = [];
     this.deck = [];
     this.community = [];
     this.pot = 0;
-    this.sidePots = [];
     this.phase = 'waiting';
     this.dealerIndex = -1;
     this.currentPlayerIndex = -1;
@@ -118,6 +108,8 @@ class PokerGame {
     this.handNum = 0;
     this.lastAction = null;
     this.winners = null;
+    // actedThisStreet: set of player ids who have acted in this betting round
+    this.actedThisStreet = new Set();
   }
 
   addPlayer(id, name) {
@@ -139,16 +131,12 @@ class PokerGame {
     }
   }
 
-  canStart() {
-    return this.activePlayers().length >= 2 && this.phase === 'waiting';
-  }
-
   activePlayers() {
     return this.players.filter(p => !p.sitOut && p.chips > 0 && p.connected);
   }
 
   inHandPlayers() {
-    return this.players.filter(p => !p.folded && !p.sitOut);
+    return this.players.filter(p => !p.folded && !p.sitOut && p.connected !== false);
   }
 
   startHand() {
@@ -156,11 +144,11 @@ class PokerGame {
     this.deck = shuffle(createDeck());
     this.community = [];
     this.pot = 0;
-    this.sidePots = [];
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
     this.winners = null;
     this.lastAction = null;
+    this.actedThisStreet = new Set();
 
     for (const p of this.players) {
       p.cards = [];
@@ -170,10 +158,12 @@ class PokerGame {
     }
 
     const active = this.activePlayers();
+    // Advance dealer
     this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
-    // Make sure dealer is active
+    let safety = 0;
     while (!active.find(p => p === this.players[this.dealerIndex])) {
       this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
+      if (++safety > 20) break;
     }
 
     // Deal 2 cards each
@@ -189,11 +179,14 @@ class PokerGame {
     this.currentBet = this.bigBlind;
     this.minRaise = this.bigBlind;
 
-    // First to act preflop: player after BB
+    // Preflop: first to act is after BB
+    // BB and SB count as having "acted" (posted blind) but BB gets option
+    this.actedThisStreet = new Set();
+    // SB has acted (posted), BB has option so NOT marked as acted yet
+    this.actedThisStreet.add(this.players[sbIdx].id);
+
     this.currentPlayerIndex = this.nextActiveFrom(bbIdx, 1);
     this.phase = 'preflop';
-    this.bettingStartIndex = this.currentPlayerIndex;
-    this.lastRaiserIndex = bbIdx;
 
     return this.getState();
   }
@@ -201,9 +194,12 @@ class PokerGame {
   nextActiveFrom(fromIdx, steps = 1) {
     let idx = fromIdx;
     let found = 0;
+    let safety = 0;
     while (found < steps) {
       idx = (idx + 1) % this.players.length;
-      if (!this.players[idx].folded && !this.players[idx].sitOut && this.players[idx].chips >= 0 && this.players[idx].connected) found++;
+      const p = this.players[idx];
+      if (p && !p.folded && !p.sitOut && p.chips >= 0 && p.connected !== false) found++;
+      if (++safety > 100) break;
     }
     return idx;
   }
@@ -219,14 +215,14 @@ class PokerGame {
 
   playerAction(playerId, action, amount) {
     const pIdx = this.players.findIndex(p => p.id === playerId);
-    if (pIdx !== this.currentPlayerIndex) return { error: 'Not your turn' };
+    if (pIdx !== this.currentPlayerIndex) return { error: 'Nie twoja kolej' };
     const p = this.players[pIdx];
-    if (p.folded) return { error: 'You folded' };
+    if (p.folded) return { error: 'Już spasowałeś' };
 
     if (action === 'fold') {
       p.folded = true;
     } else if (action === 'check') {
-      if (this.currentBet > p.bet) return { error: 'Cannot check, must call or raise' };
+      if (this.currentBet > p.bet) return { error: 'Nie możesz check — sprawdź lub podbij' };
     } else if (action === 'call') {
       const toCall = Math.min(this.currentBet - p.bet, p.chips);
       p.chips -= toCall;
@@ -243,14 +239,15 @@ class PokerGame {
       p.chips -= toAdd;
       p.bet += toAdd;
       this.pot += toAdd;
-      this.lastRaiserIndex = pIdx;
       if (p.chips === 0) p.allIn = true;
+      // Raise resets who has acted — everyone else must act again
+      this.actedThisStreet = new Set([playerId]);
     } else if (action === 'allIn') {
       const toAdd = p.chips;
       if (p.bet + toAdd > this.currentBet) {
         this.minRaise = Math.max(this.minRaise, (p.bet + toAdd) - this.currentBet);
         this.currentBet = p.bet + toAdd;
-        this.lastRaiserIndex = pIdx;
+        this.actedThisStreet = new Set([playerId]);
       }
       p.bet += toAdd;
       this.pot += toAdd;
@@ -258,6 +255,8 @@ class PokerGame {
       p.allIn = true;
     }
 
+    // Mark this player as having acted
+    this.actedThisStreet.add(playerId);
     this.lastAction = { playerId, playerName: p.name, action, amount: p.bet };
 
     return this.advanceTurn();
@@ -265,23 +264,28 @@ class PokerGame {
 
   advanceTurn() {
     const inHand = this.inHandPlayers();
-    
-    // Only one player left
+
+    // Only one player left — they win
     if (inHand.length === 1) {
       return this.awardPot(inHand);
     }
 
-    // Check if betting round is over
     const canAct = inHand.filter(p => !p.allIn);
-    const allCalled = canAct.every(p => p.bet === this.currentBet);
+
+    // Nobody can act (all in or only 1 can act)
+    if (canAct.length === 0) return this.nextPhase();
+
+    // Find next player who can act
     const nextIdx = this.nextActiveNonAllIn(this.currentPlayerIndex);
+    const nextPlayer = this.players[nextIdx];
 
-    if (allCalled || canAct.length === 0) {
-      return this.nextPhase();
-    }
+    // Betting round is over when:
+    // 1. Everyone who can act has acted this street, AND
+    // 2. Everyone's bet matches currentBet
+    const allActed = canAct.every(p => this.actedThisStreet.has(p.id));
+    const allMatched = canAct.every(p => p.bet === this.currentBet);
 
-    // Check if we've gone around to the last raiser
-    if (nextIdx === this.lastRaiserIndex && allCalled) {
+    if (allActed && allMatched) {
       return this.nextPhase();
     }
 
@@ -294,7 +298,7 @@ class PokerGame {
     for (let i = 0; i < this.players.length; i++) {
       idx = (idx + 1) % this.players.length;
       const p = this.players[idx];
-      if (!p.folded && !p.allIn && !p.sitOut && p.connected) return idx;
+      if (p && !p.folded && !p.allIn && !p.sitOut && p.connected !== false) return idx;
     }
     return fromIdx;
   }
@@ -307,6 +311,7 @@ class PokerGame {
     for (const p of this.players) p.bet = 0;
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
+    this.actedThisStreet = new Set();
 
     if (next === 'flop') {
       this.community.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
@@ -317,28 +322,33 @@ class PokerGame {
     }
 
     this.phase = next;
-    // First to act post-flop: first active left of dealer
+
+    // Post-flop: first to act is first active left of dealer
     this.currentPlayerIndex = this.nextActiveFrom(this.dealerIndex, 1);
-    // Skip if only all-in players
+
+    // If only all-in players remain, skip to next phase
     const canAct = this.inHandPlayers().filter(p => !p.allIn);
-    if (canAct.length <= 1) return this.nextPhase();
-    this.lastRaiserIndex = this.currentPlayerIndex;
+    if (canAct.length === 0) return this.nextPhase();
+
     return this.getState();
   }
 
   showdown() {
     this.phase = 'showdown';
     const inHand = this.inHandPlayers();
-    // Evaluate hands
     const scored = inHand.map(p => ({
       player: p,
       score: evaluateHand(p.cards, this.community)
     }));
     scored.sort((a,b) => compareScore(b.score, a.score));
-    // Simple: winner takes all pot (no side pots for now in display)
     const winner = scored[0].player;
     winner.chips += this.pot;
-    this.winners = scored.map(s => ({ id: s.player.id, name: s.player.name, hand: s.score.name, cards: s.player.cards }));
+    this.winners = scored.map(s => ({
+      id: s.player.id,
+      name: s.player.name,
+      hand: s.score ? s.score.name : 'Wysoka karta',
+      cards: s.player.cards
+    }));
     this.pot = 0;
     return this.getState();
   }
@@ -374,7 +384,6 @@ class PokerGame {
         connected: p.connected,
         cardCount: p.cards.length,
         isDealer: i === this.dealerIndex,
-        // Reveal cards only in showdown or to the player themselves
         cards: (this.phase === 'showdown' && !p.folded) ? p.cards : (forPlayerId === p.id ? p.cards : null)
       })),
       smallBlind: this.smallBlind,
