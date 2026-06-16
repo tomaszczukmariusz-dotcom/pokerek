@@ -416,11 +416,39 @@ function renderActions(state, me) {
 
   if (state.phase==='waiting') {
     const hasEnough=state.players.filter(p=>p.chips>0).length>=2;
-    const btn=mkBtn(state.handNum===0?'🎰 Rozpocznij grę':'🎰 Następne rozdanie','btn-start',
-      ()=>socket.emit(state.handNum===0?'start_game':'new_hand'));
-    btn.style.width='100%';
-    if (!hasEnough) btn.disabled=true;
-    area.appendChild(btn);
+    if (state.handNum===0) {
+      // First hand - just start button
+      const btn=mkBtn('🎰 Rozpocznij grę','btn-start',()=>socket.emit('start_game'));
+      btn.style.width='100%';
+      if (!hasEnough) btn.disabled=true;
+      area.appendChild(btn);
+    } else {
+      // Subsequent hands - ready system
+      const readyPlayers = state.readyPlayers || [];
+      const activePlayers = state.players.filter(p=>p.chips>0);
+      const readyCount = activePlayers.filter(p=>readyPlayers.includes(p.id)).length;
+      const totalCount = activePlayers.length;
+      const iAmReady = state.iAmReady || false;
+
+      if (!iAmReady) {
+        const btn=mkBtn('✅ Gotowy na następne rozdanie','btn-start',()=>socket.emit('new_hand'));
+        btn.style.width='100%';
+        if (!hasEnough) btn.disabled=true;
+        area.appendChild(btn);
+      } else {
+        const waitDiv=document.createElement('div');
+        waitDiv.style.cssText='text-align:center;padding:10px;background:rgba(255,255,255,0.05);border-radius:10px;';
+        waitDiv.innerHTML='<div style="font-size:13px;color:var(--gold);font-weight:600;">✅ Jesteś gotowy</div>'
+          +'<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Czekam na graczy: '+readyCount+'/'+totalCount+'</div>'
+          +'<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:6px;">'
+          +activePlayers.map(p=>{
+            const ready=readyPlayers.includes(p.id);
+            return '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+(ready?'rgba(67,170,139,0.3)' : 'rgba(255,255,255,0.07)')+';color:'+(ready?'#43aa8b' : 'var(--text-dim)')+'">'+p.name+(ready?' ✅':' ⏳')+'</span>';
+          }).join('')
+          +'</div>';
+        area.appendChild(waitDiv);
+      }
+    }
     return;
   }
 

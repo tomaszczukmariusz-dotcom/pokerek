@@ -14,7 +14,7 @@ const rooms = {};
 
 function getOrCreateRoom(roomId) {
   if (!rooms[roomId]) {
-    rooms[roomId] = { game: new PokerGame(roomId), chat: [], hostId: null };
+    rooms[roomId] = { game: new PokerGame(roomId), chat: [], hostId: null, readyPlayers: new Set() };
   }
   return rooms[roomId];
 }
@@ -80,6 +80,7 @@ io.on('connection', (socket) => {
       setTimeout(() => {
         if (rooms[currentRoom]) {
           room.game.phase = 'waiting';
+          room.readyPlayers.clear();
           emitPersonalizedStates(currentRoom, room);
         }
       }, 4000);
@@ -99,8 +100,21 @@ io.on('connection', (socket) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room) return;
-    if (room.game.phase !== 'waiting') { socket.emit('error_msg', 'Poczekaj na zakończenie rozdania'); return; }
-    if (room.game.activePlayers().length < 2) { socket.emit('error_msg', 'Potrzeba minimum 2 graczy z żetonami'); return; }
+    if (room.game.phase !== 'waiting') return;
+    const activePlayers = room.game.activePlayers();
+    if (activePlayers.length < 2) { socket.emit('error_msg', 'Potrzeba minimum 2 graczy z żetonami'); return; }
+    // Mark this player as ready
+    room.readyPlayers.add(socket.id);
+    // Broadcast ready count
+    const readyCount = activePlayers.filter(p => room.readyPlayers.has(p.id)).length;
+    const totalCount = activePlayers.length;
+    emitPersonalizedStates(currentRoom, room);
+    if (readyCount < totalCount) {
+      broadcastChat(currentRoom, null, `✋ ${room.game.players.find(p=>p.id===socket.id)?.name} gotowy (${readyCount}/${totalCount})`);
+      return;
+    }
+    // All ready - start hand
+    room.readyPlayers.clear();
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
@@ -195,9 +209,15 @@ io.on('connection', (socket) => {
   }
 
   function emitPersonalizedStates(roomId, room) {
+    const readyIds = [...room.readyPlayers];
     for (const player of room.game.players) {
       const s = io.sockets.sockets.get(player.id);
-      if (s) s.emit('game_state', { ...room.game.getState(player.id), isHost: player.id === room.hostId });
+      if (s) s.emit('game_state', { 
+        ...room.game.getState(player.id), 
+        isHost: player.id === room.hostId,
+        readyPlayers: readyIds,
+        iAmReady: room.readyPlayers.has(player.id)
+      });
     }
   }
 });
