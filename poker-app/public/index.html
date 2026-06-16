@@ -101,7 +101,12 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .btn-start:disabled { opacity: 0.4; }
 
 /* CHAT - inline pod stołem */
-.inline-chat { flex-shrink: 0; border-top: 1px solid var(--panel-border); background: rgba(0,0,0,0.25); display: flex; flex-direction: column; height: 120px; }
+.inline-chat { flex-shrink: 0; border-top: 1px solid var(--panel-border); background: rgba(0,0,0,0.25); display: flex; flex-direction: column; height: 80px; transition: height 0.2s; }
+.inline-chat.collapsed { height: 34px; }
+.inline-chat.collapsed .inline-chat-msgs { display: none; }
+.chat-toggle { display:flex; align-items:center; justify-content:space-between; padding: 4px 10px; cursor:pointer; flex-shrink:0; }
+.chat-toggle-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; }
+.chat-toggle-icon { font-size:12px; color:var(--text-dim); }
 .inline-chat-msgs { flex: 1; overflow-y: auto; padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; }
 .inline-msg { font-size: 11px; line-height: 1.4; }
 .inline-msg .msender { color: var(--gold); font-weight: 600; margin-right: 4px; }
@@ -199,7 +204,11 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
       </div>
     </div>
     <!-- CZAT INLINE -->
-    <div class="inline-chat">
+    <div class="inline-chat" id="inline-chat">
+      <div class="chat-toggle" onclick="toggleChat()">
+        <span class="chat-toggle-label">💬 Czat</span>
+        <span class="chat-toggle-icon" id="chat-toggle-icon">▲</span>
+      </div>
       <div class="inline-chat-msgs" id="chat-messages"></div>
       <div class="inline-chat-input">
         <input type="text" id="chat-input" placeholder="Napisz..." maxlength="200" autocomplete="off">
@@ -525,6 +534,13 @@ document.addEventListener('keydown', e=>{
   if (e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none') joinRoom();
   if (e.key==='Enter') sendChat();
 });
+
+function toggleChat() {
+  const chat = document.getElementById('inline-chat');
+  const icon = document.getElementById('chat-toggle-icon');
+  chat.classList.toggle('collapsed');
+  icon.textContent = chat.classList.contains('collapsed') ? '▼' : '▲';
+}
 
 function showToast(msg) {
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
