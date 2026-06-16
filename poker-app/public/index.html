@@ -154,6 +154,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 #panel-game { flex: 1; min-height: 0; overflow: hidden; }
 
 /* CHAT */
+.chat-panel { flex: 1; min-height: 0; }
 .chat-messages { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .chat-msg { display: flex; flex-direction: column; gap: 2px; }
 .chat-msg .sender { font-size: 10px; color: var(--text-dim); }
@@ -261,7 +262,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
   </div>
 
   <!-- CHAT PANEL -->
-  <div id="panel-chat" class="panel" style="flex:1;min-height:0;">
+  <div id="panel-chat" class="panel chat-panel" style="flex:1;min-height:0;">
     <div class="chat-messages" id="chat-messages"></div>
     <div class="chat-input-row">
       <input type="text" id="chat-input" placeholder="Napisz wiadomość..." maxlength="200" autocomplete="off">

@@ -21,18 +21,34 @@ function getOrCreateRoom(roomId) {
 
 io.on('connection', (socket) => {
   let currentRoom = null;
+  let currentName = null;
 
   socket.on('join_room', ({ roomId, name }) => {
     if (!roomId || !name) return;
     const room = getOrCreateRoom(roomId);
+
+    // Remove any stale player with same name (reconnect case)
+    const existing = room.game.players.find(p => p.name === name && p.id !== socket.id);
+    if (existing) {
+      room.game.players = room.game.players.filter(p => p.name !== name || p.id === socket.id);
+      if (room.hostId === existing.id) room.hostId = null;
+    }
+
+    // Remove disconnected players (connected===false) to avoid stale slots
+    room.game.players = room.game.players.filter(p => p.connected !== false || p.id === socket.id);
+
     const added = room.game.addPlayer(socket.id, name);
     if (!added && !room.game.players.find(p => p.id === socket.id)) {
-      socket.emit('error_msg', 'Pokój jest pełny');
+      socket.emit('error_msg', 'Pokój jest pełny (max 8 graczy)');
       return;
     }
-    // First player is host
-    if (!room.hostId) room.hostId = socket.id;
+
+    if (!room.hostId || !room.game.players.find(p => p.id === room.hostId)) {
+      room.hostId = socket.id;
+    }
+
     currentRoom = roomId;
+    currentName = name;
     socket.join(roomId);
     emitPersonalizedStates(roomId, room);
     socket.emit('chat_history', room.chat);
@@ -62,7 +78,10 @@ io.on('connection', (socket) => {
       const msg = room.game.winners.map(w => `🏆 ${w.name}: ${w.hand}`).join(' | ');
       broadcastChat(currentRoom, null, msg);
       setTimeout(() => {
-        if (rooms[currentRoom]) { room.game.phase = 'waiting'; emitPersonalizedStates(currentRoom, room); }
+        if (rooms[currentRoom]) {
+          room.game.phase = 'waiting';
+          emitPersonalizedStates(currentRoom, room);
+        }
       }, 4000);
     }
   });
@@ -71,8 +90,9 @@ io.on('connection', (socket) => {
     if (!currentRoom || !text?.trim()) return;
     const room = rooms[currentRoom];
     const player = room?.game.players.find(p => p.id === socket.id);
-    if (!player) return;
-    broadcastChat(currentRoom, player.name, text.trim().slice(0, 200));
+    const senderName = player?.name || currentName;
+    if (!senderName) return;
+    broadcastChat(currentRoom, senderName, text.trim().slice(0, 200));
   });
 
   socket.on('new_hand', () => {
@@ -86,7 +106,6 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
   });
 
-  // HOST ONLY: update settings (blinds, starting chips)
   socket.on('update_settings', ({ smallBlind, bigBlind, startingChips }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -102,10 +121,9 @@ io.on('connection', (socket) => {
       for (const p of room.game.players) p.chips = chips;
     }
     emitPersonalizedStates(currentRoom, room);
-    broadcastChat(currentRoom, null, `⚙️ Ustawienia zaktualizowane: SB=${room.game.smallBlind} BB=${room.game.bigBlind}${startingChips ? ' Żetony=' + parseInt(startingChips) : ''}`);
+    broadcastChat(currentRoom, null, `⚙️ Ustawienia: SB=${room.game.smallBlind} BB=${room.game.bigBlind}${startingChips ? ' Żetony='+parseInt(startingChips) : ''}`);
   });
 
-  // HOST ONLY: kick player
   socket.on('kick_player', ({ playerId }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -128,7 +146,6 @@ io.on('connection', (socket) => {
     if (player) {
       broadcastChat(currentRoom, null, `👋 ${player.name} opuścił stół`);
       room.game.removePlayer(socket.id);
-      // Assign new host if host left
       if (room.hostId === socket.id && room.game.players.length > 0) {
         room.hostId = room.game.players[0].id;
         broadcastChat(currentRoom, null, `👑 ${room.game.players[0].name} jest teraz hostem`);
