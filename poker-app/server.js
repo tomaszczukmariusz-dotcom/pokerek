@@ -93,12 +93,13 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, player.name, text.trim().slice(0, 200));
   });
 
+
   socket.on('new_hand', () => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
-    if (!room || !room.game.canStart()) return;
-    if (room.game.phase !== 'showdown' && room.game.phase !== 'waiting') return;
-    room.game.phase = 'waiting';
+    if (!room) return;
+    if (room.game.phase !== 'waiting') return;
+    if (room.game.activePlayers().length < 2) { socket.emit('error_msg', 'Potrzeba minimum 2 graczy'); return; }
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
