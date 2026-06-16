@@ -152,6 +152,18 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .btn-settings-save { background: var(--gold); color: #111; font-weight: 700; padding: 10px; border-radius: 10px; border: none; font-size: 13px; cursor: pointer; width: 100%; }
 .settings-note { font-size: 11px; color: var(--text-dim); }
 
+
+/* RESULTS TABLE */
+.results-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+.results-table th { color: var(--text-dim); font-weight: 600; text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--panel-border); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.results-table td { padding: 3px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.results-table tr:last-child td { border-bottom: none; }
+.results-table .win-row td { color: var(--gold); }
+.results-table .lose-row td { color: var(--text-dim); }
+.results-table .delta-pos { color: #43aa8b; font-weight: 600; }
+.results-table .delta-neg { color: var(--red); font-weight: 600; }
+.results-banner { background: rgba(0,0,0,0.4); border: 1px solid var(--panel-border); border-radius: 10px; padding: 8px; width: 92%; max-width: 320px; }
+.results-title { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; text-align: center; }
 /* TOAST */
 .toast { position: fixed; top: 55px; left: 50%; transform: translateX(-50%); background: rgba(230,57,70,0.92); color: #fff; padding: 7px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; }
@@ -190,6 +202,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
         <div class="pot-chip" id="center-pot" style="display:none"></div>
         <div class="status-msg" id="status-msg"></div>
         <div class="winner-banner" id="winner-banner" style="display:none"></div>
+        <div class="results-banner" id="results-banner" style="display:none"></div>
       </div>
       <div class="my-area">
         <div class="my-hand-row">
@@ -241,6 +254,7 @@ function fmtChips(n) { return (+n).toLocaleString('pl-PL')+' zł'; }
 function cardColor(s) { return (s==='♥'||s==='♦') ? 'red' : ''; }
 
 let socket, myId, myName, myRoom, gameState, amHost=false;
+let chipsSnapshot = {}; // chips before current hand
 
 function joinRoom() {
   const name = document.getElementById('input-name').value.trim();
@@ -266,6 +280,11 @@ function joinRoom() {
     // Always sync myId from players list by name
     const me = state.players.find(p => p.name === myName);
     if (me) myId = me.id;
+    // Save chips snapshot at start of each hand
+    if (gameState && gameState.phase === 'waiting' && state.phase === 'preflop') {
+      chipsSnapshot = {};
+      state.players.forEach(p => chipsSnapshot[p.id] = p.chips + (p.bet||0));
+    }
     gameState = state;
     amHost = !!state.isHost;
     document.getElementById('tab-settings').style.display = amHost ? '' : 'none';
