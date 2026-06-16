@@ -118,6 +118,7 @@ io.on('connection', (socket) => {
     }
     if (startingChips) {
       const chips = Math.max(100, parseInt(startingChips));
+      room.game.startingChips = chips;
       for (const p of room.game.players) p.chips = chips;
     }
     emitPersonalizedStates(currentRoom, room);
@@ -136,6 +137,36 @@ io.on('connection', (socket) => {
     room.game.removePlayer(playerId);
     broadcastChat(currentRoom, null, `🚫 ${player.name} został wyrzucony`);
     emitPersonalizedStates(currentRoom, room);
+  });
+
+
+  // HOST: give chips to specific player
+  socket.on('give_chips', ({ playerId, amount }) => {
+    if (!currentRoom) return;
+    const room = rooms[currentRoom];
+    if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może dawać żetony'); return; }
+    const player = room.game.players.find(p => p.id === playerId);
+    if (!player) return;
+    const chips = Math.max(1, parseInt(amount) || 0);
+    player.chips += chips;
+    if (player.folded && player.chips > 0) player.folded = false;
+    emitPersonalizedStates(currentRoom, room);
+    broadcastChat(currentRoom, null, `💰 ${player.name} otrzymał ${chips.toLocaleString('pl-PL')} zł od hosta`);
+  });
+
+  // PLAYER: buy in (add chips when busted)
+  socket.on('buyin', ({ amount }) => {
+    if (!currentRoom) return;
+    const room = rooms[currentRoom];
+    if (!room) return;
+    const player = room.game.players.find(p => p.id === socket.id);
+    if (!player) return;
+    if (player.chips > 0) { socket.emit('error_msg', 'Masz jeszcze żetony!'); return; }
+    const chips = Math.max(100, Math.min(100000, parseInt(amount) || room.game.startingChips));
+    player.chips = chips;
+    player.folded = false;
+    emitPersonalizedStates(currentRoom, room);
+    broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${chips.toLocaleString('pl-PL')} zł`);
   });
 
   socket.on('disconnect', () => {

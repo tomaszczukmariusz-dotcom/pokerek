@@ -54,6 +54,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .opp-avatar.folded-player { opacity: 0.3; }
 .opp-name { font-size: 9px; color: var(--text-dim); max-width: 65px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opp-chips { font-size: 10px; color: var(--gold); font-weight: 600; }
+.chip-bar { height: 4px; border-radius: 2px; background: var(--gold); margin-top: 2px; max-width: 60px; min-width: 4px; transition: width 0.3s; }
 .opp-bet { font-size: 9px; color: var(--chip-green); }
 .opp-cards-back { display: flex; gap: 2px; }
 .card-back-small { width: 14px; height: 20px; border-radius: 2px; background: linear-gradient(135deg, #1a3a8f, #0d2060); border: 1px solid rgba(255,255,255,0.2); }
@@ -304,7 +305,15 @@ function renderGame(state) {
   if (state.phase==='waiting') {
     statusEl.textContent = state.players.length<2 ? 'Czekaj na innych graczy...' : '';
   } else if (state.phase==='showdown' && state.winners) {
-    winnerEl.style.display=''; winnerEl.innerHTML='🏆 '+state.winners.map(w=>'<strong>'+w.name+'</strong>: '+w.hand).join('<br>');
+    winnerEl.style.display='';
+    const winnerHtml = state.winners.map(w => {
+      const cardStr = w.cards && w.cards.length ? ' ['+w.cards.map(c=>c.rank+c.suit).join(' ')+']' : '';
+      const prefix = w.isWinner ? '🏆 ' : '  ';
+      const bold = w.isWinner ? '<strong>' : '<span style="opacity:0.6">';
+      const boldEnd = w.isWinner ? '</strong>' : '</span>';
+      return prefix+bold+w.name+boldEnd+': '+w.hand+cardStr;
+    }).join('<br>');
+    winnerEl.innerHTML = winnerHtml;
   } else if (state.currentPlayerId===myId) {
     statusEl.textContent='⬆ Twoja kolej!';
   } else {
@@ -332,6 +341,7 @@ function renderGame(state) {
       +initials(p.name)+'</div>'
       +'<div class="opp-name">'+p.name+'</div>'
       +'<div class="opp-chips">'+fmtChips(p.chips)+'</div>'
+      +'<div class="chip-bar" style="width:'+Math.max(4,Math.min(60,Math.round(p.chips/50)))+'px"></div>'
       +(p.bet>0?'<div class="opp-bet">'+fmtChips(p.bet)+'</div>':'')
       +(badges.length?'<div class="badge-row">'+badges.join('')+'</div>':'')
       +(!p.folded&&p.cardCount>0?'<div class="opp-cards-back">'+Array(p.cardCount).fill('<div class="card-back-small"></div>').join('')+'</div>':'');
@@ -360,6 +370,19 @@ function renderGame(state) {
 function renderActions(state, me) {
   const area=document.getElementById('actions-area');
   area.innerHTML='';
+
+  // Show buyin button if player is busted
+  if (me && me.chips <= 0 && state.phase !== 'showdown') {
+    const buyinDiv = document.createElement('div');
+    buyinDiv.style.cssText = 'display:flex;gap:6px;align-items:center;';
+    const buyinInput = document.createElement('input');
+    buyinInput.type='number'; buyinInput.min='100'; buyinInput.value=state.startingChips||2000;
+    buyinInput.style.cssText='flex:1;padding:8px;border-radius:8px;border:1px solid var(--panel-border);background:rgba(255,255,255,0.07);color:var(--text);font-size:13px;';
+    const buyinBtn = mkBtn('💰 Dokup żetony','btn-call-a',()=>socket.emit('buyin',{amount:+buyinInput.value}));
+    buyinDiv.appendChild(buyinInput); buyinDiv.appendChild(buyinBtn);
+    area.appendChild(buyinDiv);
+    return;
+  }
 
   if (state.phase==='showdown') return;
 
@@ -431,13 +454,29 @@ function renderSettings(state) {
   if (!panel||!amHost) { if(panel) panel.innerHTML='<div style="padding:20px;font-size:12px;color:var(--text-dim);text-align:center;">Tylko host może zmieniać ustawienia</div>'; return; }
   const locked=state.phase!=='waiting';
   const dis=locked?'disabled':'';
+  
+  // Give chips section
+  const playerOptions = state.players.map(p=>'<option value="'+p.id+'">'+p.name+' ('+fmtChips(p.chips)+')</option>').join('');
+  
   panel.innerHTML='<div class="settings-section"><div class="settings-title">⚙️ Ustawienia stołu</div>'
-    +(locked?'<div class="settings-note">Zakończ rozdanie żeby zmienić</div>':'')
+    +(locked?'<div class="settings-note">Zakończ rozdanie żeby zmienić blindy/żetony</div>':'')
     +'<div class="settings-row"><label>Small Blind</label><input class="settings-input" id="set-sb" type="number" value="'+state.smallBlind+'" min="1" '+dis+'></div>'
     +'<div class="settings-row"><label>Big Blind</label><input class="settings-input" id="set-bb" type="number" value="'+state.bigBlind+'" min="2" '+dis+'></div>'
-    +'<div class="settings-row"><label>Żetony startowe</label><input class="settings-input" id="set-chips" type="number" value="2000" min="100" '+dis+'></div>'
-    +(!locked?'<button class="btn-settings-save" onclick="saveSettings()">💾 Zapisz</button>':'')
+    +'<div class="settings-row"><label>Żetony startowe</label><input class="settings-input" id="set-chips" type="number" value="'+(state.startingChips||2000)+'" min="100" '+dis+'></div>'
+    +(!locked?'<button class="btn-settings-save" onclick="saveSettings()">💾 Zapisz ustawienia</button>':'')
+    +'</div>'
+    +'<div class="settings-section"><div class="settings-title">💰 Daj żetony graczowi</div>'
+    +'<div class="settings-row"><label>Gracz</label><select class="settings-input" id="give-player" style="width:140px;text-align:left;">'+playerOptions+'</select></div>'
+    +'<div class="settings-row"><label>Kwota</label><input class="settings-input" id="give-amount" type="number" value="'+(state.startingChips||2000)+'" min="100"></div>'
+    +'<button class="btn-settings-save" onclick="giveChips()" style="background:var(--chip-green);color:#fff;">✅ Daj żetony</button>'
     +'</div>';
+}
+
+function giveChips() {
+  const playerId = document.getElementById('give-player').value;
+  const amount = parseInt(document.getElementById('give-amount').value);
+  if (!playerId||!amount||amount<1) { showToast('Nieprawidłowe dane'); return; }
+  socket.emit('give_chips', { playerId, amount });
 }
 
 function saveSettings() {

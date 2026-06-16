@@ -3,6 +3,7 @@
 const SUITS = ['♠','♥','♦','♣'];
 const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const RANK_VAL = Object.fromEntries(RANKS.map((r,i) => [r, i+2]));
+const RANK_NAME = { 14:'As', 13:'Król', 12:'Dama', 11:'Walet', 10:'10', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2' };
 
 function createDeck() {
   const deck = [];
@@ -48,6 +49,29 @@ function choose5(cards) {
   return results;
 }
 
+function handDescription(name, tiebreakers, groups) {
+  // Build human-readable description, e.g. "Para Asów", "Dwie pary: Królów i Damów"
+  const rn = (v) => RANK_NAME[v] || v;
+  const plural = (v) => {
+    const m = { 14:'Asów', 13:'Królów', 12:'Dam', 11:'Waletów', 10:'Dziesiątek',
+      9:'Dziewiątek', 8:'Ósemek', 7:'Siódemek', 6:'Szóstek', 5:'Piątek',
+      4:'Czwórek', 3:'Trójek', 2:'Dwójek' };
+    return m[v] || v+'ch';
+  };
+
+  if (name === 'Royal Flush') return 'Royal Flush';
+  if (name === 'Straight Flush') return `Poker do ${rn(tiebreakers[0])}`;
+  if (name === 'Czwórka') return `Czwórka ${plural(tiebreakers[0])}`;
+  if (name === 'Full House') return `Full House: ${plural(tiebreakers[0])} i ${plural(tiebreakers[3])}`;
+  if (name === 'Kolor') return `Kolor do ${rn(tiebreakers[0])}`;
+  if (name === 'Strit') return `Strit do ${rn(tiebreakers[0])}`;
+  if (name === 'Trójka') return `Trójka ${plural(tiebreakers[0])}`;
+  if (name === 'Dwie pary') return `Dwie pary: ${plural(tiebreakers[0])} i ${plural(tiebreakers[2])}`;
+  if (name === 'Para') return `Para ${plural(tiebreakers[0])}`;
+  if (name === 'Wysoka karta') return `Wysoka karta: ${rn(tiebreakers[0])}`;
+  return name;
+}
+
 function scoreHand(five) {
   const vals = five.map(c => c.val).sort((a,b) => b-a);
   const suits = five.map(c => c.suit);
@@ -57,19 +81,32 @@ function scoreHand(five) {
   for (const v of vals) counts[v] = (counts[v]||0)+1;
   const groups = Object.entries(counts).sort((a,b) => b[1]-a[1] || b[0]-a[0]);
   const groupCounts = groups.map(g => +g[1]);
+  const tb = sortedByGroup(groups);
 
+  let result;
   if (flush && straight) {
     const isRoyal = vals[0]===14 && vals[1]===13;
-    return { rank: isRoyal ? 9 : 8, name: isRoyal ? 'Royal Flush' : 'Straight Flush', tiebreakers: vals };
+    result = { rank: isRoyal?9:8, name: isRoyal?'Royal Flush':'Straight Flush', tiebreakers: vals };
+  } else if (groupCounts[0]===4) {
+    result = { rank:7, name:'Czwórka', tiebreakers: tb };
+  } else if (groupCounts[0]===3 && groupCounts[1]===2) {
+    result = { rank:6, name:'Full House', tiebreakers: tb };
+  } else if (flush) {
+    result = { rank:5, name:'Kolor', tiebreakers: vals };
+  } else if (straight) {
+    result = { rank:4, name:'Strit', tiebreakers: vals };
+  } else if (groupCounts[0]===3) {
+    result = { rank:3, name:'Trójka', tiebreakers: tb };
+  } else if (groupCounts[0]===2 && groupCounts[1]===2) {
+    result = { rank:2, name:'Dwie pary', tiebreakers: tb };
+  } else if (groupCounts[0]===2) {
+    result = { rank:1, name:'Para', tiebreakers: tb };
+  } else {
+    result = { rank:0, name:'Wysoka karta', tiebreakers: vals };
   }
-  if (groupCounts[0]===4) return { rank:7, name:'Czwórka', tiebreakers: sortedByGroup(groups) };
-  if (groupCounts[0]===3 && groupCounts[1]===2) return { rank:6, name:'Full House', tiebreakers: sortedByGroup(groups) };
-  if (flush) return { rank:5, name:'Kolor', tiebreakers: vals };
-  if (straight) return { rank:4, name:'Strit', tiebreakers: vals };
-  if (groupCounts[0]===3) return { rank:3, name:'Trójka', tiebreakers: sortedByGroup(groups) };
-  if (groupCounts[0]===2 && groupCounts[1]===2) return { rank:2, name:'Dwie pary', tiebreakers: sortedByGroup(groups) };
-  if (groupCounts[0]===2) return { rank:1, name:'Para', tiebreakers: sortedByGroup(groups) };
-  return { rank:0, name:'Wysoka karta', tiebreakers: vals };
+
+  result.description = handDescription(result.name, result.tiebreakers, groups);
+  return result;
 }
 
 function isStraight(sortedVals) {
@@ -108,14 +145,14 @@ class PokerGame {
     this.handNum = 0;
     this.lastAction = null;
     this.winners = null;
-    // actedThisStreet: set of player ids who have acted in this betting round
     this.actedThisStreet = new Set();
+    this.startingChips = 2000;
   }
 
   addPlayer(id, name) {
     if (this.players.find(p => p.id === id)) return false;
     if (this.players.length >= 8) return false;
-    this.players.push({ id, name, chips: 2000, cards: [], bet: 0, folded: false, allIn: false, sitOut: false, connected: true });
+    this.players.push({ id, name, chips: this.startingChips, cards: [], bet: 0, folded: false, allIn: false, sitOut: false, connected: true });
     return true;
   }
 
@@ -158,7 +195,6 @@ class PokerGame {
     }
 
     const active = this.activePlayers();
-    // Advance dealer
     this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     let safety = 0;
     while (!active.find(p => p === this.players[this.dealerIndex])) {
@@ -166,12 +202,10 @@ class PokerGame {
       if (++safety > 20) break;
     }
 
-    // Deal 2 cards each
     for (let i = 0; i < 2; i++)
       for (const p of active)
         p.cards.push(this.deck.pop());
 
-    // Post blinds
     const sbIdx = this.nextActiveFrom(this.dealerIndex, 1);
     const bbIdx = this.nextActiveFrom(this.dealerIndex, 2);
     this.postBlind(sbIdx, this.smallBlind);
@@ -179,22 +213,16 @@ class PokerGame {
     this.currentBet = this.bigBlind;
     this.minRaise = this.bigBlind;
 
-    // Preflop: first to act is after BB
-    // BB and SB count as having "acted" (posted blind) but BB gets option
     this.actedThisStreet = new Set();
-    // SB has acted (posted), BB has option so NOT marked as acted yet
     this.actedThisStreet.add(this.players[sbIdx].id);
 
     this.currentPlayerIndex = this.nextActiveFrom(bbIdx, 1);
     this.phase = 'preflop';
-
     return this.getState();
   }
 
   nextActiveFrom(fromIdx, steps = 1) {
-    let idx = fromIdx;
-    let found = 0;
-    let safety = 0;
+    let idx = fromIdx, found = 0, safety = 0;
     while (found < steps) {
       idx = (idx + 1) % this.players.length;
       const p = this.players[idx];
@@ -207,9 +235,7 @@ class PokerGame {
   postBlind(playerIdx, amount) {
     const p = this.players[playerIdx];
     const actual = Math.min(p.chips, amount);
-    p.chips -= actual;
-    p.bet += actual;
-    this.pot += actual;
+    p.chips -= actual; p.bet += actual; this.pot += actual;
     if (p.chips === 0) p.allIn = true;
   }
 
@@ -222,12 +248,10 @@ class PokerGame {
     if (action === 'fold') {
       p.folded = true;
     } else if (action === 'check') {
-      if (this.currentBet > p.bet) return { error: 'Nie możesz check — sprawdź lub podbij' };
+      if (this.currentBet > p.bet) return { error: 'Nie możesz check' };
     } else if (action === 'call') {
       const toCall = Math.min(this.currentBet - p.bet, p.chips);
-      p.chips -= toCall;
-      p.bet += toCall;
-      this.pot += toCall;
+      p.chips -= toCall; p.bet += toCall; this.pot += toCall;
       if (p.chips === 0) p.allIn = true;
     } else if (action === 'raise') {
       const raiseTotal = Math.min(amount, p.chips + p.bet);
@@ -236,11 +260,8 @@ class PokerGame {
       const toAdd = raiseTotal - p.bet;
       this.minRaise = raiseTotal - this.currentBet;
       this.currentBet = raiseTotal;
-      p.chips -= toAdd;
-      p.bet += toAdd;
-      this.pot += toAdd;
+      p.chips -= toAdd; p.bet += toAdd; this.pot += toAdd;
       if (p.chips === 0) p.allIn = true;
-      // Raise resets who has acted — everyone else must act again
       this.actedThisStreet = new Set([playerId]);
     } else if (action === 'allIn') {
       const toAdd = p.chips;
@@ -249,47 +270,23 @@ class PokerGame {
         this.currentBet = p.bet + toAdd;
         this.actedThisStreet = new Set([playerId]);
       }
-      p.bet += toAdd;
-      this.pot += toAdd;
-      p.chips = 0;
-      p.allIn = true;
+      p.bet += toAdd; this.pot += toAdd; p.chips = 0; p.allIn = true;
     }
 
-    // Mark this player as having acted
     this.actedThisStreet.add(playerId);
     this.lastAction = { playerId, playerName: p.name, action, amount: p.bet };
-
     return this.advanceTurn();
   }
 
   advanceTurn() {
     const inHand = this.inHandPlayers();
-
-    // Only one player left — they win
-    if (inHand.length === 1) {
-      return this.awardPot(inHand);
-    }
-
+    if (inHand.length === 1) return this.awardPot(inHand);
     const canAct = inHand.filter(p => !p.allIn);
-
-    // Nobody can act (all in or only 1 can act)
     if (canAct.length === 0) return this.nextPhase();
-
-    // Find next player who can act
-    const nextIdx = this.nextActiveNonAllIn(this.currentPlayerIndex);
-    const nextPlayer = this.players[nextIdx];
-
-    // Betting round is over when:
-    // 1. Everyone who can act has acted this street, AND
-    // 2. Everyone's bet matches currentBet
     const allActed = canAct.every(p => this.actedThisStreet.has(p.id));
     const allMatched = canAct.every(p => p.bet === this.currentBet);
-
-    if (allActed && allMatched) {
-      return this.nextPhase();
-    }
-
-    this.currentPlayerIndex = nextIdx;
+    if (allActed && allMatched) return this.nextPhase();
+    this.currentPlayerIndex = this.nextActiveNonAllIn(this.currentPlayerIndex);
     return this.getState();
   }
 
@@ -306,30 +303,15 @@ class PokerGame {
   nextPhase() {
     const phaseOrder = ['preflop','flop','turn','river','showdown'];
     const next = phaseOrder[phaseOrder.indexOf(this.phase) + 1];
-
-    // Reset bets for new street
     for (const p of this.players) p.bet = 0;
-    this.currentBet = 0;
-    this.minRaise = this.bigBlind;
-    this.actedThisStreet = new Set();
-
-    if (next === 'flop') {
-      this.community.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
-    } else if (next === 'turn' || next === 'river') {
-      this.community.push(this.deck.pop());
-    } else if (next === 'showdown') {
-      return this.showdown();
-    }
-
+    this.currentBet = 0; this.minRaise = this.bigBlind; this.actedThisStreet = new Set();
+    if (next === 'flop') this.community.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
+    else if (next === 'turn' || next === 'river') this.community.push(this.deck.pop());
+    else if (next === 'showdown') return this.showdown();
     this.phase = next;
-
-    // Post-flop: first to act is first active left of dealer
     this.currentPlayerIndex = this.nextActiveFrom(this.dealerIndex, 1);
-
-    // If only all-in players remain, skip to next phase
     const canAct = this.inHandPlayers().filter(p => !p.allIn);
     if (canAct.length === 0) return this.nextPhase();
-
     return this.getState();
   }
 
@@ -346,8 +328,9 @@ class PokerGame {
     this.winners = scored.map(s => ({
       id: s.player.id,
       name: s.player.name,
-      hand: s.score ? s.score.name : 'Wysoka karta',
-      cards: s.player.cards
+      hand: s.score ? s.score.description : 'Wysoka karta',
+      cards: s.player.cards,
+      isWinner: s.player.id === winner.id
     }));
     this.pot = 0;
     return this.getState();
@@ -356,7 +339,7 @@ class PokerGame {
   awardPot(players) {
     this.phase = 'showdown';
     players[0].chips += this.pot;
-    this.winners = [{ id: players[0].id, name: players[0].name, hand: 'Wszyscy spasowali', cards: [] }];
+    this.winners = [{ id: players[0].id, name: players[0].name, hand: 'Wszyscy spasowali', cards: [], isWinner: true }];
     this.pot = 0;
     return this.getState();
   }
@@ -388,6 +371,7 @@ class PokerGame {
       })),
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
+      startingChips: this.startingChips,
     };
   }
 }
