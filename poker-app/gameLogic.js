@@ -216,6 +216,8 @@ class PokerGame {
 
     this.actedThisStreet = new Set();
     this.actedThisStreet.add(this.players[sbIdx].id);
+    this.lastAggressorId = this.players[bbIdx].id; // BB is initial aggressor preflop
+    this.hadAggression = false; // no raise yet
 
     this.currentPlayerIndex = this.nextActiveFrom(bbIdx, 1);
     this.phase = 'preflop';
@@ -264,12 +266,16 @@ class PokerGame {
       p.chips -= toAdd; p.bet += toAdd; p.totalBet = (p.totalBet||0) + toAdd; this.pot += toAdd;
       if (p.chips === 0) p.allIn = true;
       this.actedThisStreet = new Set([playerId]);
+      this.lastAggressorId = playerId;
+      this.hadAggression = true;
     } else if (action === 'allIn') {
       const toAdd = p.chips;
       if (p.bet + toAdd > this.currentBet) {
         this.minRaise = Math.max(this.minRaise, (p.bet + toAdd) - this.currentBet);
         this.currentBet = p.bet + toAdd;
         this.actedThisStreet = new Set([playerId]);
+        this.lastAggressorId = playerId;
+        this.hadAggression = true;
       }
       p.bet += toAdd; p.totalBet = (p.totalBet||0) + toAdd; this.pot += toAdd; p.chips = 0; p.allIn = true;
     }
@@ -306,6 +312,7 @@ class PokerGame {
     const next = phaseOrder[phaseOrder.indexOf(this.phase) + 1];
     for (const p of this.players) p.bet = 0;
     this.currentBet = 0; this.minRaise = this.bigBlind; this.actedThisStreet = new Set();
+    this.lastAggressorId = null; this.hadAggression = false;
     if (next === 'flop') this.community.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
     else if (next === 'turn' || next === 'river') this.community.push(this.deck.pop());
     else if (next === 'showdown') return this.showdown();
@@ -326,6 +333,18 @@ class PokerGame {
       score: evaluateHand(p.cards, this.community)
     }));
     scored.sort((a,b) => compareScore(b.score, a.score));
+
+    // Determine who must show cards:
+    // - If there was aggression (raise): only the aggressor must show + winner must show
+    // - If no aggression (all checked): everyone shows
+    const mustShow = new Set();
+    if (this.hadAggression && this.lastAggressorId) {
+      mustShow.add(this.lastAggressorId);
+      mustShow.add(scored[0].player.id); // winner always shows
+    } else {
+      // All checked - everyone shows
+      for (const s of scored) mustShow.add(s.player.id);
+    }
 
     // Build side pots
     // Each player can only win up to their totalBet from each other player
@@ -369,7 +388,8 @@ class PokerGame {
       id: s.player.id,
       name: s.player.name,
       hand: s.score ? s.score.description : 'Wysoka karta',
-      cards: s.player.cards,
+      cards: mustShow.has(s.player.id) ? s.player.cards : [],
+      showCards: mustShow.has(s.player.id),
       isWinner: winnerIds.has(s.player.id)
     }));
     this.pot = 0;
@@ -407,7 +427,7 @@ class PokerGame {
         connected: p.connected,
         cardCount: p.cards.length,
         isDealer: i === this.dealerIndex,
-        cards: (this.phase === 'showdown' && !p.folded) ? p.cards : (forPlayerId === p.id ? p.cards : null)
+        cards: (this.phase === 'showdown' && !p.folded && this.winners && this.winners.find(w=>w.id===p.id&&w.showCards)) ? p.cards : (forPlayerId === p.id ? p.cards : null)
       })),
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
