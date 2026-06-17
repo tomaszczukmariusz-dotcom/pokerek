@@ -320,9 +320,14 @@ class PokerGame {
     else if (next === 'turn' || next === 'river') this.community.push(this.deck.pop());
     else if (next === 'showdown') return this.showdown();
     this.phase = next;
-    this.currentPlayerIndex = this.nextActiveFrom(this.dealerIndex, 1);
     const canAct = this.inHandPlayers().filter(p => !p.allIn);
     if (canAct.length === 0) return this.nextPhase();
+    // Find first active non-all-in player after dealer
+    this.currentPlayerIndex = this.nextActiveFrom(this.dealerIndex, 1);
+    // If that player is all-in, advance to next non-all-in
+    if (this.players[this.currentPlayerIndex]?.allIn) {
+      this.currentPlayerIndex = this.nextActiveNonAllIn(this.dealerIndex);
+    }
     return this.getState();
   }
 
