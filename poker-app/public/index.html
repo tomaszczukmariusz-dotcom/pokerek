@@ -675,16 +675,27 @@ function renderActions(state, me, maxChips) {
   const maxRaise=me.bet+me.chips;
   const minR=Math.min(state.currentBet+state.minRaise,maxRaise);
   if (me.chips>callAmt) {
+    // +/- raise row
+    let raiseVal = minR;
     const row=document.createElement('div'); row.className='raise-row';
-    const slider=document.createElement('input');
-    slider.type='range'; slider.min=minR; slider.max=maxRaise; slider.value=minR; slider.step=state.bigBlind;
-    const val=document.createElement('span'); val.className='raise-val'; val.textContent=fmtChips(minR);
-    slider.oninput=()=>val.textContent=fmtChips(+slider.value);
-    row.appendChild(slider); row.appendChild(val); area.appendChild(row);
+    row.style.cssText='display:flex;align-items:center;gap:6px;';
+    const minusBtn=document.createElement('button');
+    minusBtn.className='action-btn btn-fold-a'; minusBtn.textContent='−';
+    minusBtn.style.cssText='flex:0 0 38px;font-size:18px;padding:6px 0;';
+    const valSpan=document.createElement('span'); valSpan.className='raise-val';
+    valSpan.style.cssText='flex:1;text-align:center;font-size:13px;';
+    valSpan.textContent=fmtChips(raiseVal);
+    const plusBtn=document.createElement('button');
+    plusBtn.className='action-btn btn-raise-a'; plusBtn.textContent='+';
+    plusBtn.style.cssText='flex:0 0 38px;font-size:18px;padding:6px 0;';
+    minusBtn.onclick=()=>{ raiseVal=Math.max(minR, raiseVal-state.bigBlind); valSpan.textContent=fmtChips(raiseVal); };
+    plusBtn.onclick=()=>{ raiseVal=Math.min(maxRaise, raiseVal+state.bigBlind); valSpan.textContent=fmtChips(raiseVal); };
+    row.appendChild(minusBtn); row.appendChild(valSpan); row.appendChild(plusBtn);
+    area.appendChild(row);
     const btns=document.createElement('div'); btns.className='action-btns';
     btns.appendChild(mkBtn('Fold','btn-fold-a',()=>action('fold')));
     btns.appendChild(canCheck?mkBtn('Check','btn-check-a',()=>action('check')):mkBtn('Call '+fmtChips(callAmt),'btn-call-a',()=>action('call')));
-    btns.appendChild(mkBtn('Raise','btn-raise-a',()=>action('raise',+slider.value)));
+    btns.appendChild(mkBtn('Raise','btn-raise-a',()=>action('raise',raiseVal)));
     btns.appendChild(mkBtn('All In','btn-allin-a',()=>action('allIn')));
     area.appendChild(btns);
   } else {
