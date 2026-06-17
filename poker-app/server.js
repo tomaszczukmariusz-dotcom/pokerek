@@ -186,6 +186,33 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${player.chips} zł`);
   });
 
+  socket.on('reset_game', () => {
+    if (!currentRoom) return;
+    const room = rooms[currentRoom];
+    if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może resetować grę'); return; }
+    // Reset game state but keep players and chips
+    const game = room.game;
+    game.phase = 'waiting';
+    game.community = [];
+    game.pot = 0;
+    game.currentBet = 0;
+    game.winners = null;
+    game.lastAction = null;
+    game.actedThisStreet = new Set();
+    game.currentPlayerIndex = -1;
+    if (game._autoFoldTimer) { clearTimeout(game._autoFoldTimer); game._autoFoldTimer = null; }
+    if (room._autoFoldTimer) { clearTimeout(room._autoFoldTimer); room._autoFoldTimer = null; }
+    room.readyPlayers.clear();
+    for (const p of game.players) {
+      p.cards = [];
+      p.bet = 0;
+      p.folded = p.chips <= 0;
+      p.allIn = false;
+    }
+    emitPersonalizedStates(currentRoom, room);
+    broadcastChat(currentRoom, null, '🔄 Host zresetował grę');
+  });
+
   socket.on('kick_player', ({ playerId }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];

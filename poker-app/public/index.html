@@ -746,6 +746,10 @@ function renderSettings(state) {
     +'<div class="settings-row"><label>Timer (sekundy)</label><input class="settings-input" id="set-timer" type="number" value="'+(state.turnSeconds||30)+'" min="10" max="120"></div>'
     +(!locked?'<button class="btn-settings-save" onclick="saveSettings()">💾 Zapisz ustawienia</button>':'')
     +'</div>'
+    +'<div class="settings-section"><div class="settings-title">🔄 Reset gry</div>'
+    +'<div class="settings-note">Użyj gdy gra się zatnie — gracze zachowają żetony</div>'
+    +'<button class="btn-settings-save" onclick="resetGame()" style="background:var(--red);color:#fff;">🔄 Resetuj grę</button>'
+    +'</div>'
     +'<div class="settings-section"><div class="settings-title">💰 Daj żetony graczowi</div>'
     +'<div class="settings-row"><label>Gracz</label><select class="settings-input" id="give-player" style="width:140px;text-align:left;">'+playerOptions+'</select></div>'
     +'<div class="settings-row"><label>Kwota</label><input class="settings-input" id="give-amount" type="number" value="'+(state.startingChips||2000)+'" min="100"></div>'
@@ -762,6 +766,10 @@ function saveSettings() {
   if (bb<=sb) { showToast('BB musi być większy niż SB'); return; }
   socket.emit('update_settings',{smallBlind:sb,bigBlind:bb,startingChips:chips,turnSeconds:timer});
   showToast('Zapisano!');
+}
+function resetGame() {
+  if (!confirm('Zresetować grę? Gracze zachowają swoje żetony.')) return;
+  socket.emit('reset_game');
 }
 function giveChips() {
   const pid=document.getElementById('give-player').value;
