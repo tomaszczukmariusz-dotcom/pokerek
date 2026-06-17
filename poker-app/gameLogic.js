@@ -340,15 +340,6 @@ class PokerGame {
     // Determine who must show cards:
     // - If there was aggression (raise): only the aggressor must show + winner must show
     // - If no aggression (all checked): everyone shows
-    const mustShow = new Set();
-    if (this.hadAggression && this.lastAggressorId) {
-      mustShow.add(this.lastAggressorId);
-      mustShow.add(scored[0].player.id); // winner always shows
-    } else {
-      // All checked - everyone shows
-      for (const s of scored) mustShow.add(s.player.id);
-    }
-
     // Build side pots
     // Each player can only win up to their totalBet from each other player
     const allPlayers = this.players.filter(p => (p.totalBet||0) > 0);
@@ -379,12 +370,28 @@ class PokerGame {
       processedLevel += cap;
     }
 
-    // Award each side pot to best eligible hand
+    // Award each side pot to best eligible hand(s) - split on tie
     for (const pot of sidePots) {
       if (pot.eligible.length === 0) continue;
-      const potWinner = pot.eligible[0]; // already sorted by score desc
-      potWinner.player.chips += pot.amount;
-      winnerIds.add(potWinner.player.id);
+      // Find all players tied for best hand
+      const best = pot.eligible[0];
+      const tied = pot.eligible.filter(s => compareScore(s.score, best.score) === 0);
+      // Split pot equally among tied winners
+      const share = Math.floor(pot.amount / tied.length);
+      const remainder = pot.amount - share * tied.length;
+      tied.forEach((s, i) => {
+        s.player.chips += share + (i === 0 ? remainder : 0); // remainder goes to first winner
+        winnerIds.add(s.player.id);
+      });
+    }
+
+    // Determine who must show cards (after winners are known)
+    const mustShow = new Set();
+    if (this.hadAggression && this.lastAggressorId) {
+      mustShow.add(this.lastAggressorId);
+      for (const id of winnerIds) mustShow.add(id);
+    } else {
+      for (const s of scored) mustShow.add(s.player.id);
     }
 
     this.winners = scored.map(s => ({
