@@ -138,15 +138,15 @@ class PokerGame {
     this.phase = 'waiting';
     this.dealerIndex = -1;
     this.currentPlayerIndex = -1;
-    this.smallBlind = 20;
-    this.bigBlind = 40;
+    this.smallBlind = 50;
+    this.bigBlind = 100;
     this.currentBet = 0;
-    this.minRaise = 40;
+    this.minRaise = 100;
     this.handNum = 0;
     this.lastAction = null;
     this.winners = null;
     this.actedThisStreet = new Set();
-    this.startingChips = 2000;
+    this.startingChips = 5000;
   }
 
   addPlayer(id, name) {

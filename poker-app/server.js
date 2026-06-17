@@ -179,7 +179,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     const player = room.game.players.find(p => p.id === socket.id);
     if (!player || player.chips > 0) return;
-    player.chips = Math.max(100, Math.min(100000, parseInt(amount) || room.game.startingChips));
+    player.chips = Math.max(100, Math.min(5000, parseInt(amount) || room.game.startingChips));
     player.folded = false;
     player.buyins = (player.buyins || 0) + 1;
     emitPersonalizedStates(currentRoom, room);
