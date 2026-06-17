@@ -66,6 +66,7 @@ io.on('connection', (socket) => {
       if (!room.hostId) room.hostId = socket.id;
       currentRoom = roomId;
       currentName = name;
+      socket._playerName = name;
       socket.join(roomId);
       emitPersonalizedStates(roomId, room);
       socket.emit('chat_history', room.chat);
@@ -263,9 +264,27 @@ io.on('connection', (socket) => {
 
   function emitPersonalizedStates(roomId, room) {
     const readyIds = [...room.readyPlayers];
+    // Get all connected sockets in this room
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId) || new Set();
+    
     for (const player of room.game.players) {
-      const s = io.sockets.sockets.get(player.id);
-      if (s) s.emit('game_state', {
+      // Try direct socket lookup first
+      let playerSocket = io.sockets.sockets.get(player.id);
+      
+      // If not found, search by socket in room that matches this player's name
+      if (!playerSocket) {
+        for (const sid of socketsInRoom) {
+          const s = io.sockets.sockets.get(sid);
+          if (s && s._playerName === player.name) {
+            playerSocket = s;
+            // Update player ID to match current socket
+            player.id = sid;
+            break;
+          }
+        }
+      }
+      
+      if (playerSocket) playerSocket.emit('game_state', {
         ...room.game.getState(player.id),
         isHost: player.id === room.hostId,
         readyPlayers: readyIds,

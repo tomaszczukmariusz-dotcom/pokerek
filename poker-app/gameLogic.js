@@ -431,7 +431,7 @@ class PokerGame {
         cardCount: p.cards.length,
         isDealer: i === this.dealerIndex,
         buyins: p.buyins || 0,
-        cards: (this.phase === 'showdown' && !p.folded && this.winners && this.winners.find(w=>w.id===p.id&&w.showCards)) ? p.cards : (forPlayerId === p.id ? p.cards : null)
+        cards: (this.phase === 'showdown' && !p.folded && this.winners && this.winners.find(w=>w.id===p.id&&w.showCards)) ? p.cards : (forPlayerId === p.id ? p.cards : [])
       })),
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
