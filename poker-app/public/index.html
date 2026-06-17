@@ -434,6 +434,7 @@ function joinRoom() {
 
 function renderGame(state) {
   const me = state.players.find(p => p.id === myId);
+  if (state.phase !== 'waiting' && state.phase !== 'showdown') console.log('DEBUG me:', me?.name, 'cards:', me?.cards, 'myId:', myId);
   const phaseNames = { waiting:'Oczekiwanie', preflop:'Pre-flop', flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown' };
   const maxChips = Math.max(...state.players.map(p => p.chips), 1);
 
@@ -571,16 +572,20 @@ function renderGame(state) {
     const buyinEl = document.getElementById('my-buyins');
     if (buyinEl) buyinEl.textContent = me.buyins > 0 ? 'Dokupienia: '+me.buyins+'x' : '';
     const myCards=document.getElementById('my-cards');
-    // Only re-render cards when they change
-    if (me.cards && me.cards.length && myCards.children.length !== me.cards.length) {
-      myCards.innerHTML='';
-      me.cards.forEach((c,i) => {
-        const el=document.createElement('div');
-        el.className='card '+cardColor(c.suit)+' new-card';
-        el.innerHTML='<span class="rank">'+c.rank+'</span><span class="suit">'+c.suit+'</span>';
-        myCards.appendChild(el);
-      });
-    } else if (!me.cards || !me.cards.length) {
+    if (me.cards && me.cards.length > 0) {
+      // Re-render if card count changed or cards are different
+      const currentCards = myCards.querySelectorAll('.card:not(.empty)');
+      const needsUpdate = currentCards.length !== me.cards.length;
+      if (needsUpdate) {
+        myCards.innerHTML='';
+        me.cards.forEach((c) => {
+          const el=document.createElement('div');
+          el.className='card '+cardColor(c.suit)+' new-card';
+          el.innerHTML='<span class="rank">'+c.rank+'</span><span class="suit">'+c.suit+'</span>';
+          myCards.appendChild(el);
+        });
+      }
+    } else {
       myCards.innerHTML='';
     }
   }
