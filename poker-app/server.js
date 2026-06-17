@@ -264,33 +264,33 @@ io.on('connection', (socket) => {
 
   function emitPersonalizedStates(roomId, room) {
     const readyIds = [...room.readyPlayers];
-    // Get all connected sockets in this room
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId) || new Set();
-    
+
     for (const player of room.game.players) {
-      // Try direct socket lookup first
       let playerSocket = io.sockets.sockets.get(player.id);
-      
-      // If not found, search by socket in room that matches this player's name
+
+      // If socket not found by ID, find by name and update ID
       if (!playerSocket) {
         for (const sid of socketsInRoom) {
-          const s = io.sockets.sockets.get(sid);
-          if (s && s._playerName === player.name) {
-            playerSocket = s;
-            // Update player ID to match current socket
+          const sock = io.sockets.sockets.get(sid);
+          if (sock && sock._playerName === player.name) {
+            // Update ID BEFORE calling getState
             player.id = sid;
+            playerSocket = sock;
             break;
           }
         }
       }
-      
-      if (playerSocket) playerSocket.emit('game_state', {
-        ...room.game.getState(player.id),
-        isHost: player.id === room.hostId,
-        readyPlayers: readyIds,
-        iAmReady: room.readyPlayers.has(player.id),
-        turnSeconds: room.game.turnSeconds || 30
-      });
+
+      if (playerSocket) {
+        playerSocket.emit('game_state', {
+          ...room.game.getState(player.id),
+          isHost: player.id === room.hostId,
+          readyPlayers: readyIds,
+          iAmReady: room.readyPlayers.has(player.id),
+          turnSeconds: room.game.turnSeconds || 30
+        });
+      }
     }
   }
 });

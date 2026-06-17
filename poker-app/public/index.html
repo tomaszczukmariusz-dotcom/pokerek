@@ -572,12 +572,28 @@ const phaseNames = { waiting:'Oczekiwanie', preflop:'Pre-flop', flop:'Flop', tur
     if (buyinEl) buyinEl.textContent = me.buyins > 0 ? 'Dokupienia: '+me.buyins+'x' : '';
     const myCards=document.getElementById('my-cards');
     if (me.cards && me.cards.length > 0) {
-      // Re-render if card count changed or cards are different
-      const currentCards = myCards.querySelectorAll('.card:not(.empty)');
-      const needsUpdate = currentCards.length !== me.cards.length;
-      if (needsUpdate) {
+      // Always re-render cards - check if content changed
+      const currentHTML = myCards.innerHTML;
+      const newCards = me.cards.map(c =>
+        '<div class="card '+cardColor(c.suit)+'">'
+        +'<span class="rank">'+c.rank+'</span>'
+        +'<span class="suit">'+c.suit+'</span></div>'
+      ).join('');
+      // Only animate on first render (empty before)
+      if (myCards.children.length === 0) {
         myCards.innerHTML='';
-        me.cards.forEach((c) => {
+        me.cards.forEach(c => {
+          const el=document.createElement('div');
+          el.className='card '+cardColor(c.suit)+' new-card';
+          el.innerHTML='<span class="rank">'+c.rank+'</span><span class="suit">'+c.suit+'</span>';
+          myCards.appendChild(el);
+        });
+      } else if (myCards.children.length !== me.cards.length ||
+        Array.from(myCards.children).some((el,i) => 
+          el.querySelector('.rank')?.textContent !== me.cards[i]?.rank
+        )) {
+        myCards.innerHTML='';
+        me.cards.forEach(c => {
           const el=document.createElement('div');
           el.className='card '+cardColor(c.suit)+' new-card';
           el.innerHTML='<span class="rank">'+c.rank+'</span><span class="suit">'+c.suit+'</span>';
