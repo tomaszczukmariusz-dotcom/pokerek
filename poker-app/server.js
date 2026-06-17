@@ -83,6 +83,7 @@ io.on('connection', (socket) => {
     if (room.game.phase !== 'waiting') return;
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
+    scheduleAutoFold(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
   });
 
@@ -139,7 +140,7 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
   });
 
-  socket.on('update_settings', ({ smallBlind, bigBlind, startingChips }) => {
+  socket.on('update_settings', ({ smallBlind, bigBlind, startingChips, turnSeconds }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może zmieniać ustawienia'); return; }
@@ -154,8 +155,9 @@ io.on('connection', (socket) => {
       room.game.startingChips = chips;
       for (const p of room.game.players) p.chips = chips;
     }
+    if (turnSeconds) room.game.turnSeconds = Math.max(10, Math.min(120, parseInt(turnSeconds)));
     emitPersonalizedStates(currentRoom, room);
-    broadcastChat(currentRoom, null, `⚙️ Ustawienia: SB=${room.game.smallBlind} BB=${room.game.bigBlind}${startingChips ? ' Żetony='+parseInt(startingChips) : ''}`);
+    broadcastChat(currentRoom, null, `⚙️ Ustawienia: SB=${room.game.smallBlind} BB=${room.game.bigBlind}${startingChips ? ' Żetony='+parseInt(startingChips) : ''}${room.game.turnSeconds ? ' Timer='+room.game.turnSeconds+'s' : ''}`);
   });
 
   socket.on('kick_player', ({ playerId }) => {
@@ -202,6 +204,28 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${chips.toLocaleString('pl-PL')} zł`);
   });
 
+  function scheduleAutoFold(roomId, room) {
+    // Clear previous timer
+    if (room._autoFoldTimer) { clearTimeout(room._autoFoldTimer); room._autoFoldTimer = null; }
+    const secs = room.game.turnSeconds || 30;
+    const currentPId = room.game.players[room.game.currentPlayerIndex]?.id;
+    if (!currentPId || room.game.phase === 'waiting' || room.game.phase === 'showdown') return;
+    room._autoFoldTimer = setTimeout(() => {
+      if (!rooms[roomId]) return;
+      const r = rooms[roomId];
+      const cp = r.game.players[r.game.currentPlayerIndex];
+      if (!cp || cp.id !== currentPId) return;
+      if (r.game.phase === 'waiting' || r.game.phase === 'showdown') return;
+      // Auto check if possible, otherwise fold
+      const canCheck = cp.bet >= r.game.currentBet;
+      const action = canCheck ? 'check' : 'fold';
+      r.game.playerAction(currentPId, action, 0);
+      emitPersonalizedStates(roomId, r);
+      broadcastChat(roomId, null, `⏱ ${cp.name} przekroczył czas (${canCheck ? 'auto-check' : 'auto-fold'})`);
+      scheduleAutoFold(roomId, r);
+    }, secs * 1000);
+  }
+
   socket.on('disconnect', (reason) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -247,7 +271,8 @@ io.on('connection', (socket) => {
         ...room.game.getState(player.id), 
         isHost: player.id === room.hostId,
         readyPlayers: readyIds,
-        iAmReady: room.readyPlayers.has(player.id)
+        iAmReady: room.readyPlayers.has(player.id),
+        turnSeconds: room.game.turnSeconds || 30
       });
     }
   }

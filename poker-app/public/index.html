@@ -293,8 +293,11 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
         <div class="phase-label" id="phase-label"></div>
         <div class="community-cards" id="community-cards"></div>
         <div class="pot-chip" id="center-pot" style="display:none"></div>
-        <div id="turn-timer-wrap" style="display:none;width:85%;max-width:200px;">
-          <div class="my-timer-bar" id="my-timer-bar"></div>
+        <div id="turn-timer-wrap" style="display:none;width:85%;max-width:220px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="my-timer-bar" id="my-timer-bar" style="flex:1"></div>
+            <div id="timer-count" style="font-size:13px;font-weight:700;color:var(--gold);min-width:24px;text-align:right;">30</div>
+          </div>
         </div>
         <div class="status-msg" id="status-msg"></div>
         <div class="winner-banner" id="winner-banner" style="display:none"></div>
@@ -364,7 +367,7 @@ let prevCommunityCount = 0;
 let prevPot = 0;
 let timerInterval = null;
 let timerStart = null;
-const TURN_SECONDS = 30;
+let TURN_SECONDS = 30;
 
 function joinRoom() {
   const name = document.getElementById('input-name').value.trim();
@@ -585,12 +588,16 @@ function startTimer() {
   clearTimer();
   timerStart = Date.now();
   const bar = document.getElementById('my-timer-bar');
+  const countEl = document.getElementById('timer-count');
   bar.style.width='100%'; bar.className='my-timer-bar';
+  if (countEl) { countEl.textContent=TURN_SECONDS; countEl.style.color='var(--gold)'; }
   timerInterval = setInterval(() => {
     const elapsed = (Date.now() - timerStart) / 1000;
+    const remaining = Math.max(0, TURN_SECONDS - elapsed);
     const pct = Math.max(0, 100 - (elapsed / TURN_SECONDS * 100));
     bar.style.width = pct + '%';
-    if (pct < 30) bar.className='my-timer-bar warning';
+    if (countEl) { countEl.textContent=Math.ceil(remaining); }
+    if (pct < 30) { bar.className='my-timer-bar warning'; if(countEl) countEl.style.color='var(--red)'; }
     if (pct <= 0) clearTimer();
   }, 200);
 }
@@ -699,6 +706,7 @@ function renderSettings(state) {
     +'<div class="settings-row"><label>Small Blind</label><input class="settings-input" id="set-sb" type="number" value="'+state.smallBlind+'" min="1" '+dis+'></div>'
     +'<div class="settings-row"><label>Big Blind</label><input class="settings-input" id="set-bb" type="number" value="'+state.bigBlind+'" min="2" '+dis+'></div>'
     +'<div class="settings-row"><label>Żetony startowe</label><input class="settings-input" id="set-chips" type="number" value="'+(state.startingChips||2000)+'" min="100" '+dis+'></div>'
+    +'<div class="settings-row"><label>Timer (sekundy)</label><input class="settings-input" id="set-timer" type="number" value="'+(state.turnSeconds||30)+'" min="10" max="120"></div>'
     +(!locked?'<button class="btn-settings-save" onclick="saveSettings()">💾 Zapisz ustawienia</button>':'')
     +'</div>'
     +'<div class="settings-section"><div class="settings-title">💰 Daj żetony graczowi</div>'
@@ -712,9 +720,10 @@ function saveSettings() {
   const sb=parseInt(document.getElementById('set-sb').value);
   const bb=parseInt(document.getElementById('set-bb').value);
   const chips=parseInt(document.getElementById('set-chips').value);
+  const timer=parseInt(document.getElementById('set-timer')?.value||30);
   if (!sb||!bb||sb<1||bb<2) { showToast('Nieprawidłowe blindy'); return; }
   if (bb<=sb) { showToast('BB musi być większy niż SB'); return; }
-  socket.emit('update_settings',{smallBlind:sb,bigBlind:bb,startingChips:chips});
+  socket.emit('update_settings',{smallBlind:sb,bigBlind:bb,startingChips:chips,turnSeconds:timer});
   showToast('Zapisano!');
 }
 function giveChips() {
