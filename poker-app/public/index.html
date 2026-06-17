@@ -718,7 +718,7 @@ function renderSettings(state) {
     +'<div class="settings-section"><div class="settings-title">💰 Daj żetony graczowi</div>'
     +'<div class="settings-row"><label>Gracz</label><select class="settings-input" id="give-player" style="width:140px;text-align:left;">'+playerOptions+'</select></div>'
     +'<div class="settings-row"><label>Kwota</label><input class="settings-input" id="give-amount" type="number" value="'+(state.startingChips||2000)+'" min="100"></div>'
-    +'<button class="btn-settings-save" onclick="giveChips()" style="background:var(--chip-green);color:#fff;">✅ Daj żetony</button>'
+    +'<div style="display:flex;gap:6px;">'+'<button class="btn-settings-save" onclick="giveChips()" style="background:var(--chip-green);color:#fff;flex:1;">➕ Dodaj</button>'+'<button class="btn-settings-save" onclick="setChips()" style="background:var(--blue);color:#fff;flex:1;">✏️ Ustaw</button>'+'</div>'
     +'</div>';
 }
 
@@ -737,6 +737,13 @@ function giveChips() {
   const amt=parseInt(document.getElementById('give-amount').value);
   if (!pid||!amt||amt<1) { showToast('Nieprawidłowe dane'); return; }
   socket.emit('give_chips',{playerId:pid,amount:amt});
+}
+function setChips() {
+  const pid=document.getElementById('give-player').value;
+  const amt=parseInt(document.getElementById('give-amount').value);
+  if (!pid||isNaN(amt)||amt<0) { showToast('Nieprawidłowe dane'); return; }
+  if (!confirm('Ustawić żetony na '+amt+' zł?'  )) return;
+  socket.emit('set_chips',{playerId:pid,amount:amt});
 }
 
 function addChatMsg(msg) {

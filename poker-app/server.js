@@ -175,6 +175,21 @@ io.on('connection', (socket) => {
   });
 
 
+  // HOST: set exact chips for player
+  socket.on('set_chips', ({ playerId, amount }) => {
+    if (!currentRoom) return;
+    const room = rooms[currentRoom];
+    if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może zmieniać żetony'); return; }
+    const player = room.game.players.find(p => p.id === playerId);
+    if (!player) return;
+    const chips = Math.max(0, parseInt(amount) || 0);
+    player.chips = chips;
+    if (chips === 0) player.folded = true;
+    else player.folded = false;
+    emitPersonalizedStates(currentRoom, room);
+    broadcastChat(currentRoom, null, `✏️ ${player.name} ma teraz ${chips.toLocaleString('pl-PL')} zł`);
+  });
+
   // HOST: give chips to specific player
   socket.on('give_chips', ({ playerId, amount }) => {
     if (!currentRoom) return;
