@@ -124,7 +124,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .card:nth-child(3).new-card { animation-delay: 0.14s; }
 .card:nth-child(4).new-card { animation-delay: 0.21s; }
 .card:nth-child(5).new-card { animation-delay: 0.28s; }
-.card .suit { font-size: 10px; }
+.card .suit { font-size: 14px; }
 .card.red .rank, .card.red .suit { color: var(--red); }
 .card.empty { background: rgba(255,255,255,0.06); border: 1.5px dashed rgba(255,255,255,0.2); box-shadow: none; }
 
@@ -175,6 +175,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .my-info .my-bet { font-size: 10px; color: var(--chip-green); }
 .my-cards-row { display: flex; gap: 5px; }
 .my-cards-row .card { width: 40px; height: 55px; }
+.my-cards-row .card .suit { font-size: 15px; }
 .my-cards-row .card.new-card { animation: dealMyCard 0.4s ease forwards; }
 @keyframes dealMyCard {
   0% { transform: translateY(30px) scale(0.8); opacity: 0; }
