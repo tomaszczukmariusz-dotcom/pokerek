@@ -152,7 +152,7 @@ class PokerGame {
   addPlayer(id, name) {
     if (this.players.find(p => p.id === id)) return false;
     if (this.players.length >= 8) return false;
-    this.players.push({ id, name, chips: this.startingChips, cards: [], bet: 0, folded: false, allIn: false, sitOut: false, connected: true });
+    this.players.push({ id, name, chips: this.startingChips, cards: [], bet: 0, folded: false, allIn: false, sitOut: false, connected: true, buyins: 0 });
     return true;
   }
 
@@ -430,6 +430,7 @@ class PokerGame {
         connected: p.connected,
         cardCount: p.cards.length,
         isDealer: i === this.dealerIndex,
+        buyins: p.buyins || 0,
         cards: (this.phase === 'showdown' && !p.folded && this.winners && this.winners.find(w=>w.id===p.id&&w.showCards)) ? p.cards : (forPlayerId === p.id ? p.cards : null)
       })),
       smallBlind: this.smallBlind,

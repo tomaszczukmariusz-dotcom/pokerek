@@ -200,6 +200,7 @@ io.on('connection', (socket) => {
     const chips = Math.max(100, Math.min(100000, parseInt(amount) || room.game.startingChips));
     player.chips = chips;
     player.folded = false;
+    player.buyins = (player.buyins || 0) + 1;
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${chips.toLocaleString('pl-PL')} zł`);
   });

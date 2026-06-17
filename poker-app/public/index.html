@@ -90,6 +90,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
 .badge-bb { background: rgba(249,199,79,0.15); color: #f9c74f; }
 .badge-allin { background: rgba(230,57,70,0.3); color: #ff9a9e; }
 .badge-fold { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.4); }
+.badge-buyin { background: rgba(230,57,70,0.25); color: #ff9a9e; border: 1px solid rgba(230,57,70,0.3); font-size: 8px; padding: 1px 5px; border-radius: 10px; font-weight: 700; }
 
 /* Bet animation bubble */
 .bet-bubble {
@@ -534,6 +535,7 @@ function renderGame(state) {
     if (pIdx===bbIdx) badges.push('<span class="badge badge-bb">BB</span>');
     if (p.allIn) badges.push('<span class="badge badge-allin">AI</span>');
     if (p.folded) badges.push('<span class="badge badge-fold">F</span>');
+    if (p.buyins > 0) badges.push('<span class="badge badge-buyin">+'+p.buyins+'x</span>');
     const isAway = p.connected === 'away';
 
     // Timer ring for active player
@@ -560,7 +562,7 @@ function renderGame(state) {
 
   // My area
   if (me) {
-    document.getElementById('my-name').textContent=me.name+(me.isDealer?' 🎯':'');
+    document.getElementById('my-name').textContent=me.name+(me.isDealer?' 🎯':'')+(me.buyins>0?' (+'+me.buyins+'x)':'');
     document.getElementById('my-chips').textContent=fmtChips(me.chips);
     document.getElementById('my-chip-stack-wrap').innerHTML=chipStackHTML(me.chips, maxChips);
     document.getElementById('my-bet').textContent=me.bet>0?'Bet: '+fmtChips(me.bet):'';
