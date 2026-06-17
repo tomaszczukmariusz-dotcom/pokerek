@@ -434,8 +434,7 @@ function joinRoom() {
 
 function renderGame(state) {
   const me = state.players.find(p => p.id === myId);
-  if (state.phase !== 'waiting' && state.phase !== 'showdown') console.log('DEBUG me:', me?.name, 'cards:', me?.cards, 'myId:', myId);
-  const phaseNames = { waiting:'Oczekiwanie', preflop:'Pre-flop', flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown' };
+const phaseNames = { waiting:'Oczekiwanie', preflop:'Pre-flop', flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown' };
   const maxChips = Math.max(...state.players.map(p => p.chips), 1);
 
   // Topbar
