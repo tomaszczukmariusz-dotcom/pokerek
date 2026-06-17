@@ -311,6 +311,7 @@ html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: var(--t
             <div class="my-chips" id="my-chips"></div>
             <div id="my-chip-stack-wrap"></div>
             <div class="my-bet" id="my-bet"></div>
+            <div id="my-buyins" style="font-size:10px;color:#ff9a9e;font-weight:600;"></div>
           </div>
           <div class="my-cards-row" id="my-cards"></div>
         </div>
@@ -553,6 +554,7 @@ function renderGame(state) {
       +(p.bet>0?'<div class="bet-bubble">'+p.bet+'</div>':'')
       +'</div>'
       +'<div class="opp-name">'+p.name+(isAway?' 📵':'')+'</div>'
+      +(p.buyins>0?'<div style="font-size:8px;color:#ff9a9e;font-weight:600;">Dokup: '+p.buyins+'x</div>':'')
       +chipStackHTML(p.chips, maxChips)
       +'<div class="opp-chips-val">'+fmtChips(p.chips)+'</div>'
       +(badges.length?'<div class="badge-row">'+badges.join('')+'</div>':'')
@@ -562,10 +564,12 @@ function renderGame(state) {
 
   // My area
   if (me) {
-    document.getElementById('my-name').textContent=me.name+(me.isDealer?' 🎯':'')+(me.buyins>0?' (+'+me.buyins+'x)':'');
+    document.getElementById('my-name').textContent=me.name+(me.isDealer?' 🎯':'');
     document.getElementById('my-chips').textContent=fmtChips(me.chips);
     document.getElementById('my-chip-stack-wrap').innerHTML=chipStackHTML(me.chips, maxChips);
     document.getElementById('my-bet').textContent=me.bet>0?'Bet: '+fmtChips(me.bet):'';
+    const buyinEl = document.getElementById('my-buyins');
+    if (buyinEl) buyinEl.textContent = me.buyins > 0 ? 'Dokupienia: '+me.buyins+'x' : '';
     const myCards=document.getElementById('my-cards');
     // Only re-render cards when they change
     if (me.cards && me.cards.length && myCards.children.length !== me.cards.length) {
@@ -690,7 +694,7 @@ function renderPlayersList(state, maxChips) {
       +(state.isHost&&p.id===myId?'<span class="host-badge">HOST</span>':'')
       +'</div>'
       +chipStackHTML(p.chips, maxChips||5000)
-      +'<div class="player-chips-label">'+fmtChips(p.chips)+'</div>'
+      +(p.buyins>0?'<div style="font-size:10px;color:#ff9a9e;font-weight:600;">Dokupienia: '+p.buyins+'x</div>':'')+'<div class="player-chips-label">'+fmtChips(p.chips)+'</div>'
       +'<div class="player-status">'+status+(p.isDealer?' · D':'')+'</div></div>'+kickBtn;
     panel.appendChild(div);
   });
