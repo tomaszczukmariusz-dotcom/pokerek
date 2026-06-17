@@ -42,23 +42,29 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Remove any stale player with same name (reconnect case)
+    // Check if player is reconnecting (same name, different socket id)
     const existing = room.game.players.find(p => p.name === name && p.id !== socket.id);
     if (existing) {
-      room.game.players = room.game.players.filter(p => p.name !== name || p.id === socket.id);
-      if (room.hostId === existing.id) room.hostId = null;
+      // Update socket ID in place - preserve cards, chips, everything
+      if (room.hostId === existing.id) room.hostId = socket.id;
+      if (room.readyPlayers.has(existing.id)) {
+        room.readyPlayers.delete(existing.id);
+        room.readyPlayers.add(socket.id);
+      }
+      existing.id = socket.id;
+      existing.connected = true;
+      existing.folded = existing.chips <= 0;
+    } else {
+      // Remove stale disconnected slots
+      room.game.players = room.game.players.filter(p => p.connected !== false || p.id === socket.id);
+      const added = room.game.addPlayer(socket.id, name);
+      if (!added && !room.game.players.find(p => p.id === socket.id)) {
+        socket.emit('error_msg', 'Pokój jest pełny (max 8 graczy)');
+        return;
+      }
     }
 
-    // Remove disconnected players (connected===false) to avoid stale slots
-    room.game.players = room.game.players.filter(p => p.connected !== false || p.id === socket.id);
-
-    const added = room.game.addPlayer(socket.id, name);
-    if (!added && !room.game.players.find(p => p.id === socket.id)) {
-      socket.emit('error_msg', 'Pokój jest pełny (max 8 graczy)');
-      return;
-    }
-
-    // Restore connection status for returning player
+    // Restore connection status
     const returningPlayer = room.game.players.find(p => p.id === socket.id);
     if (returningPlayer) returningPlayer.connected = true;
 
