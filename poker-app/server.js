@@ -9,10 +9,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*' },
-  pingTimeout: 60000,      // 60s before considering disconnected
-  pingInterval: 25000,     // ping every 25s
+  pingTimeout: 60000,
+  pingInterval: 25000,
   upgradeTimeout: 30000,
-  allowUpgrades: true,
   transports: ['websocket', 'polling']
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -53,10 +52,13 @@ io.on('connection', (socket) => {
       }
       existing.id = socket.id;
       existing.connected = true;
-      existing.folded = existing.chips <= 0;
+      // Only unfold if they have chips (not busted)
+      if (existing.chips > 0 && room.game.phase === 'waiting') {
+        existing.folded = false;
+      }
     } else {
-      // Remove stale disconnected slots
-      room.game.players = room.game.players.filter(p => p.connected !== false || p.id === socket.id);
+      // New player - remove stale disconnected slots first
+      room.game.players = room.game.players.filter(p => p.connected !== false);
       const added = room.game.addPlayer(socket.id, name);
       if (!added && !room.game.players.find(p => p.id === socket.id)) {
         socket.emit('error_msg', 'Pokój jest pełny (max 8 graczy)');
@@ -64,9 +66,9 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Restore connection status
-    const returningPlayer = room.game.players.find(p => p.id === socket.id);
-    if (returningPlayer) returningPlayer.connected = true;
+    // Ensure connected = true
+    const player = room.game.players.find(p => p.id === socket.id);
+    if (player) player.connected = true;
 
     if (!room.hostId || !room.game.players.find(p => p.id === room.hostId)) {
       room.hostId = socket.id;
@@ -77,7 +79,6 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     emitPersonalizedStates(roomId, room);
     socket.emit('chat_history', room.chat);
-    const player = room.game.players.find(p => p.id === socket.id);
     broadcastChat(roomId, null, `🃏 ${player?.name || name} dołączył do stołu`);
   });
 
@@ -89,7 +90,6 @@ io.on('connection', (socket) => {
     if (room.game.phase !== 'waiting') return;
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
-    scheduleAutoFold(currentRoom, room);
     broadcastChat(currentRoom, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
   });
 
@@ -100,6 +100,7 @@ io.on('connection', (socket) => {
     const result = room.game.playerAction(socket.id, action, amount);
     if (result?.error) { socket.emit('error_msg', result.error); return; }
     emitPersonalizedStates(currentRoom, room);
+    scheduleAutoFold(currentRoom, room);
     if (room.game.phase === 'showdown' && room.game.winners) {
       const msg = room.game.winners.map(w => `🏆 ${w.name}: ${w.hand}`).join(' | ');
       broadcastChat(currentRoom, null, msg);
@@ -129,17 +130,13 @@ io.on('connection', (socket) => {
     if (room.game.phase !== 'waiting') return;
     const activePlayers = room.game.activePlayers();
     if (activePlayers.length < 2) { socket.emit('error_msg', 'Potrzeba minimum 2 graczy z żetonami'); return; }
-    // Mark this player as ready
     room.readyPlayers.add(socket.id);
-    // Broadcast ready count
     const readyCount = activePlayers.filter(p => room.readyPlayers.has(p.id)).length;
-    const totalCount = activePlayers.length;
     emitPersonalizedStates(currentRoom, room);
-    if (readyCount < totalCount) {
-      broadcastChat(currentRoom, null, `✋ ${room.game.players.find(p=>p.id===socket.id)?.name} gotowy (${readyCount}/${totalCount})`);
+    if (readyCount < activePlayers.length) {
+      broadcastChat(currentRoom, null, `✋ ${room.game.players.find(p=>p.id===socket.id)?.name} gotowy (${readyCount}/${activePlayers.length})`);
       return;
     }
-    // All ready - start hand
     room.readyPlayers.clear();
     room.game.startHand();
     emitPersonalizedStates(currentRoom, room);
@@ -166,22 +163,6 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `⚙️ Ustawienia: SB=${room.game.smallBlind} BB=${room.game.bigBlind}${startingChips ? ' Żetony='+parseInt(startingChips) : ''}${room.game.turnSeconds ? ' Timer='+room.game.turnSeconds+'s' : ''}`);
   });
 
-  socket.on('kick_player', ({ playerId }) => {
-    if (!currentRoom) return;
-    const room = rooms[currentRoom];
-    if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może wyrzucać graczy'); return; }
-    if (playerId === socket.id) { socket.emit('error_msg', 'Nie możesz wyrzucić siebie'); return; }
-    const player = room.game.players.find(p => p.id === playerId);
-    if (!player) return;
-    const kickedSocket = io.sockets.sockets.get(playerId);
-    if (kickedSocket) kickedSocket.emit('kicked', { reason: 'Zostałeś wyrzucony przez hosta' });
-    room.game.removePlayer(playerId);
-    broadcastChat(currentRoom, null, `🚫 ${player.name} został wyrzucony`);
-    emitPersonalizedStates(currentRoom, room);
-  });
-
-
-  // HOST: set exact chips for player
   socket.on('set_chips', ({ playerId, amount }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -196,7 +177,6 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `✏️ ${player.name} ma teraz ${chips.toLocaleString('pl-PL')} zł`);
   });
 
-  // HOST: give chips to specific player
   socket.on('give_chips', ({ playerId, amount }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -210,7 +190,6 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `💰 ${player.name} otrzymał ${chips.toLocaleString('pl-PL')} zł od hosta`);
   });
 
-  // PLAYER: buy in (add chips when busted)
   socket.on('buyin', ({ amount }) => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
@@ -226,8 +205,21 @@ io.on('connection', (socket) => {
     broadcastChat(currentRoom, null, `🔄 ${player.name} dokupił ${chips.toLocaleString('pl-PL')} zł`);
   });
 
+  socket.on('kick_player', ({ playerId }) => {
+    if (!currentRoom) return;
+    const room = rooms[currentRoom];
+    if (!room || room.hostId !== socket.id) { socket.emit('error_msg', 'Tylko host może wyrzucać graczy'); return; }
+    if (playerId === socket.id) { socket.emit('error_msg', 'Nie możesz wyrzucić siebie'); return; }
+    const player = room.game.players.find(p => p.id === playerId);
+    if (!player) return;
+    const kickedSocket = io.sockets.sockets.get(playerId);
+    if (kickedSocket) kickedSocket.emit('kicked', { reason: 'Zostałeś wyrzucony przez hosta' });
+    room.game.removePlayer(playerId);
+    broadcastChat(currentRoom, null, `🚫 ${player.name} został wyrzucony`);
+    emitPersonalizedStates(currentRoom, room);
+  });
+
   function scheduleAutoFold(roomId, room) {
-    // Clear previous timer
     if (room._autoFoldTimer) { clearTimeout(room._autoFoldTimer); room._autoFoldTimer = null; }
     const secs = room.game.turnSeconds || 30;
     const currentPId = room.game.players[room.game.currentPlayerIndex]?.id;
@@ -238,7 +230,6 @@ io.on('connection', (socket) => {
       const cp = r.game.players[r.game.currentPlayerIndex];
       if (!cp || cp.id !== currentPId) return;
       if (r.game.phase === 'waiting' || r.game.phase === 'showdown') return;
-      // Auto check if possible, otherwise fold
       const canCheck = cp.bet >= r.game.currentBet;
       const action = canCheck ? 'check' : 'fold';
       r.game.playerAction(currentPId, action, 0);
@@ -248,18 +239,16 @@ io.on('connection', (socket) => {
     }, secs * 1000);
   }
 
-  socket.on('disconnect', (reason) => {
+  socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = rooms[currentRoom];
     if (!room) return;
     const player = room.game.players.find(p => p.id === socket.id);
     if (!player) return;
 
-    // Give 30s grace period for reconnect (tab switch, phone sleep etc)
     player._disconnectTimer = setTimeout(() => {
-      // Check if player reconnected with new socket
-      const stillGone = !room.game.players.find(p => p.name === player.name && p.id !== socket.id);
-      if (stillGone && room.game.players.find(p => p.id === socket.id)) {
+      const stillGone = room.game.players.find(p => p.id === socket.id);
+      if (stillGone) {
         broadcastChat(currentRoom, null, `👋 ${player.name} opuścił stół`);
         room.game.removePlayer(socket.id);
         if (room.hostId === socket.id && room.game.players.length > 0) {
@@ -270,7 +259,6 @@ io.on('connection', (socket) => {
       }
     }, 30000);
 
-    // Mark as temporarily away but don't fold yet
     player.connected = 'away';
     emitPersonalizedStates(currentRoom, room);
     broadcastChat(currentRoom, null, `📵 ${player.name} chwilowo niedostępny...`);
@@ -289,8 +277,8 @@ io.on('connection', (socket) => {
     const readyIds = [...room.readyPlayers];
     for (const player of room.game.players) {
       const s = io.sockets.sockets.get(player.id);
-      if (s) s.emit('game_state', { 
-        ...room.game.getState(player.id), 
+      if (s) s.emit('game_state', {
+        ...room.game.getState(player.id),
         isHost: player.id === room.hostId,
         readyPlayers: readyIds,
         iAmReady: room.readyPlayers.has(player.id),

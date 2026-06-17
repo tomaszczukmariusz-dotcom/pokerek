@@ -169,7 +169,7 @@ class PokerGame {
   }
 
   activePlayers() {
-    return this.players.filter(p => !p.sitOut && p.chips > 0 && p.connected);
+    return this.players.filter(p => !p.sitOut && p.chips > 0 && p.connected !== false);
   }
 
   inHandPlayers() {
@@ -194,7 +194,7 @@ class PokerGame {
       p.cards = [];
       p.bet = 0;
       p.totalBet = 0;
-      p.folded = p.chips <= 0 || !p.connected;
+      p.folded = p.chips <= 0 || p.connected === false;
       p.allIn = false;
     }
 
