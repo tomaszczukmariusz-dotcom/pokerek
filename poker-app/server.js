@@ -198,7 +198,22 @@ io.on('connection', (socket) => {
     room.game.removePlayer(playerId);
     broadcastChat(currentRoom, null, `🚫 ${player.name} został wyrzucony`);
     emitPersonalizedStates(currentRoom, room);
+    checkAndStartIfAllReady(currentRoom, room);
   });
+
+  function checkAndStartIfAllReady(roomId, room) {
+    if (room.game.phase !== 'waiting') return;
+    const active = room.game.activePlayers();
+    if (active.length < 2) return;
+    if (room.game.handNum === 0) return; // first hand needs explicit start
+    const readyCount = active.filter(p => room.readyPlayers.has(p.id)).length;
+    if (readyCount >= active.length) {
+      room.readyPlayers.clear();
+      room.game.startHand();
+      emitPersonalizedStates(roomId, room);
+      broadcastChat(roomId, null, `🎰 Rozdanie #${room.game.handNum} rozpoczęte!`);
+    }
+  }
 
   function scheduleAutoFold(roomId, room) {
     if (room._autoFoldTimer) { clearTimeout(room._autoFoldTimer); room._autoFoldTimer = null; }
@@ -248,6 +263,7 @@ io.on('connection', (socket) => {
           }
           broadcastChat(currentRoom, null, `👋 ${player.name} opuścił stół`);
           emitPersonalizedStates(currentRoom, room);
+          checkAndStartIfAllReady(currentRoom, room);
         }
       }, 15000);
     }
